@@ -72,3 +72,4 @@ Three independent Expo app targets are available:
 3. Admin App
 - `/Users/shreedhar/Library/Mobile Documents/com~apple~CloudDocs/Vedic Chai/App/mobile-admin`
 - `/Users/shreedhar/Library/Mobile Documents/com~apple~CloudDocs/Vedic Chai/App/mobile-admin/README.md`
+# Grab-and-Go-App
