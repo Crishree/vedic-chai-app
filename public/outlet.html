@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title id="outletDocTitle">Your Brand Outlet Dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <h1 class="brand" id="outletBrandTitle">Your Brand Outlet Dashboard</h1>
+        <div>
+          <a href="/customer">Customer App</a>
+          |
+          <a href="/admin">Admin</a>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>Verify Pickup</h2>
+        <div class="grid">
+          <div>
+            <label for="verifyCode">Pickup Code (or unique ID)</label>
+            <input id="verifyCode" placeholder="Example: VC-123456" />
+          </div>
+          <div style="display: flex; align-items: end">
+            <button id="verifyBtn">Verify & Handover</button>
+          </div>
+        </div>
+        <div id="verifyStatus"></div>
+      </section>
+
+      <section class="card">
+        <h2>Paid Orders</h2>
+        <p><span class="pill">Auto-refresh: 5s</span></p>
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Customer</th>
+              <th>Phone</th>
+              <th>Items</th>
+              <th>Total</th>
+              <th>Payment</th>
+              <th>Pickup Code</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="ordersBody"></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="/outlet.js"></script>
+  </body>
+</html>

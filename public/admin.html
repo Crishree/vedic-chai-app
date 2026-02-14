@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vedic Chai Admin Dashboard</title>
+    <link rel="stylesheet" href="/styles.css?v=admin-theme-20260213-2" />
+  </head>
+  <body class="admin-page">
+    <main class="container">
+      <div class="admin-frame">
+        <header class="admin-topbar">
+          <div class="admin-topbar-brand">Dashboard</div>
+          <div class="admin-search-wrap">
+            <input class="admin-search" placeholder="Search stores, orders, analytics..." />
+          </div>
+          <div class="admin-publish-wrap">
+            <button id="publishChangesBtn" type="button">Publish Changes</button>
+            <p id="publishMeta" class="admin-help-text" style="margin: 0"></p>
+          </div>
+        </header>
+
+        <section class="card admin-card" id="adminLoginCard">
+          <h2>Admin Login</h2>
+          <p class="admin-subtitle" style="margin-top: 0">Login required to access dashboard.</p>
+          <div class="grid admin-form-grid">
+            <div>
+              <label for="adminUsername">Username</label>
+              <input id="adminUsername" placeholder="admin" />
+            </div>
+            <div>
+              <label for="adminPin">PIN</label>
+              <input id="adminPin" type="password" inputmode="numeric" placeholder="4321" />
+            </div>
+            <div style="display: flex; align-items: end">
+              <button id="adminLoginBtn">Login</button>
+            </div>
+          </div>
+          <div id="adminLoginStatus"></div>
+        </section>
+
+        <div id="adminContent" style="display: none">
+          <div class="admin-shell">
+            <aside class="admin-sidebar">
+              <div class="admin-sidebar-brand">
+                <p class="admin-kicker">Brand</p>
+                <p class="admin-sidebar-brand-name" id="adminBrandHeader" style="display: none"></p>
+                <p class="admin-sidebar-brand-name" id="adminBrandHeaderFallback">Not Set</p>
+              </div>
+              <div class="admin-sidebar-group">
+                <p class="admin-sidebar-title">Main Menu</p>
+                <button id="navHomeBtn" class="admin-side-btn admin-side-btn-active" type="button">Home</button>
+                <button id="navAnalyticsBtn" class="admin-side-btn" type="button">Analytics</button>
+                <button id="navStoresBtn" class="admin-side-btn" type="button">Store Setup</button>
+              </div>
+              <div class="admin-sidebar-group">
+                <p class="admin-sidebar-title">Session</p>
+                <button id="navLogoutBtn" class="admin-side-btn" type="button">Logout</button>
+              </div>
+            </aside>
+
+            <section class="admin-workspace">
+              <section class="card admin-card" id="adminHomePanel">
+                <h2>Admin Home</h2>
+                <p class="admin-subtitle" style="margin-top: 0">Choose what you want to manage.</p>
+                <div class="grid admin-home-grid">
+                  <button id="goAnalyticsBtn" class="admin-home-btn" type="button">View Analytics</button>
+                  <button id="goStoresBtn" class="admin-home-btn" type="button">Create / Edit Store</button>
+                </div>
+              </section>
+
+              <div id="analyticsPanel" style="display: none">
+                <section class="card admin-card">
+                  <div class="admin-panel-head">
+                    <h2 style="margin: 0">Analytics</h2>
+                    <button id="backFromAnalyticsBtn" type="button">Back to Home</button>
+                  </div>
+                  <div class="grid admin-form-grid" style="margin-top: 12px">
+                    <div>
+                      <label for="analyticsRangePreset">Date Range</label>
+                      <select id="analyticsRangePreset">
+                        <option value="last7">Last 7 Days</option>
+                        <option value="today">Today</option>
+                        <option value="mtd">Month to Date</option>
+                        <option value="ytd">Year to Date</option>
+                        <option value="previousMonth">Previous Month</option>
+                        <option value="custom">Custom (From-To)</option>
+                        <option value="all">All Time</option>
+                      </select>
+                    </div>
+                    <div id="analyticsCustomRangeWrap" style="display: none; grid-column: span 2">
+                      <div class="grid admin-form-grid">
+                        <div>
+                          <label for="analyticsDateFrom">From Date</label>
+                          <input id="analyticsDateFrom" type="date" />
+                        </div>
+                        <div>
+                          <label for="analyticsDateTo">To Date</label>
+                          <input id="analyticsDateTo" type="date" />
+                        </div>
+                      </div>
+                    </div>
+                    <div style="display: flex; align-items: end; gap: 8px">
+                      <button id="applyAnalyticsRangeBtn" type="button">Apply Range</button>
+                      <button id="resetAnalyticsRangeBtn" type="button">Reset</button>
+                    </div>
+                  </div>
+                  <p class="admin-help-text" id="analyticsRangeActiveLabel" style="margin-top: 8px"></p>
+                  <div id="analyticsRangeStatus"></div>
+                </section>
+                <section class="card admin-card">
+                  <div class="admin-analytics-view-toggle">
+                    <button id="analyticsViewInsightsBtn" type="button">Insights View</button>
+                    <button id="analyticsViewOrdersBtn" type="button">Orders View</button>
+                  </div>
+                </section>
+
+                <div id="analyticsInsightsView" class="admin-insights-layout">
+                  <div class="admin-insights-main">
+                    <section class="card admin-card">
+                      <h2>Visual Insights</h2>
+                      <div class="grid admin-chart-grid">
+                        <div class="admin-chart-card">
+                          <h3 class="admin-chart-title">Network Order Value Trend</h3>
+                          <canvas id="networkValueTrendChart" height="170"></canvas>
+                        </div>
+                        <div class="admin-chart-card">
+                          <h3 class="admin-chart-title">Payment Methods Mix</h3>
+                          <canvas id="networkPaymentMixChart" height="170"></canvas>
+                        </div>
+                        <div class="admin-chart-card">
+                          <h3 class="admin-chart-title">Order Status Mix</h3>
+                          <canvas id="networkOrderStatusChart" height="170"></canvas>
+                        </div>
+                        <div class="admin-chart-card">
+                          <h3 class="admin-chart-title">Selected Store Daily Value</h3>
+                          <canvas id="storeValueTrendChart" height="170"></canvas>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                  <div class="admin-insights-side">
+                    <section class="card admin-card">
+                      <h2>Overall Network Snapshot</h2>
+                      <div class="grid admin-metrics-grid" id="summaryGrid"></div>
+                    </section>
+
+                    <section class="card admin-card">
+                      <h2>Network Payment Breakdown</h2>
+                      <div class="grid admin-metrics-grid" id="paymentGrid"></div>
+                    </section>
+
+                    <section class="card admin-card">
+                      <h2>Store-wise Snapshot</h2>
+                      <div class="grid admin-form-grid">
+                        <div>
+                          <label for="analyticsStoreSelect">Select Store</label>
+                          <select id="analyticsStoreSelect">
+                            <option value="">-- Select a store --</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="grid admin-metrics-grid" id="storeSummaryGrid" style="margin-top: 12px"></div>
+                      <div id="storeStatus"></div>
+                    </section>
+                  </div>
+                </div>
+
+                <div id="analyticsOrdersView" style="display: none">
+                  <section class="card admin-card">
+                    <h2>Store Orders</h2>
+                    <div class="grid admin-form-grid">
+                      <div>
+                        <label for="analyticsStoreSelectOrders">Choose Store</label>
+                        <select id="analyticsStoreSelectOrders">
+                          <option value="">-- Select a store --</option>
+                        </select>
+                      </div>
+                    </div>
+                    <p><span class="pill">For selected store and active date range</span></p>
+                    <div class="admin-table-wrap admin-table-wrap-compact">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Time</th>
+                            <th>Customer</th>
+                            <th>Items</th>
+                            <th>Total</th>
+                            <th>Payment</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody id="storeOrdersBody"></tbody>
+                      </table>
+                    </div>
+                  </section>
+
+                  <section class="card admin-card">
+                    <h2>Network Recent Orders</h2>
+                    <p><span class="pill">Auto-refresh: 5s</span></p>
+                    <div class="admin-table-wrap admin-table-wrap-compact">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Time</th>
+                            <th>Customer</th>
+                            <th>Items</th>
+                            <th>Total</th>
+                            <th>Payment</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody id="adminOrdersBody"></tbody>
+                      </table>
+                    </div>
+                  </section>
+                </div>
+              </div>
+
+              <div id="storesPanel" style="display: none">
+                <section class="card admin-card">
+                  <div class="admin-panel-head">
+                    <h2 style="margin: 0">Create / Edit Store</h2>
+                    <button id="backFromStoresBtn" type="button">Back to Home</button>
+                  </div>
+                </section>
+
+                <section class="card admin-card" id="brandSetupSection">
+                  <h2>Brand Setup</h2>
+                  <p class="admin-subtitle" style="margin-top: 0">Set brand identity first. Customer app will use this branding.</p>
+                  <div class="grid admin-form-grid">
+                    <div>
+                      <label for="brandNameInput">Brand Name</label>
+                      <input id="brandNameInput" placeholder="Enter Brand Name" />
+                    </div>
+                    <div>
+                      <label for="brandLogoFileInput">Upload Brand Logo</label>
+                      <input id="brandLogoFileInput" type="file" accept="image/png,image/jpeg,image/webp" />
+                      <p class="admin-help-text" style="margin-top: 6px">
+                        Recommended: 512 x 512 px (square), PNG/JPG/WEBP, max 300 KB.
+                      </p>
+                      <p class="admin-help-text" id="brandLogoMeta" style="margin-top: 4px">No logo uploaded yet.</p>
+                    </div>
+                    <div style="grid-column: 1 / -1">
+                      <label class="admin-checkbox-inline" for="useBrandLogoInput">
+                        <input id="useBrandLogoInput" type="checkbox" />
+                        <span>Use logo in customer app hero instead of text brand name</span>
+                      </label>
+                    </div>
+                    <div style="display: flex; align-items: end">
+                      <button id="saveBrandSetupBtn" type="button">Save</button>
+                    </div>
+                  </div>
+                  <div id="brandSetupStatus"></div>
+                </section>
+
+                <section class="card admin-card">
+                  <h2>Store Setup</h2>
+                  <p class="admin-subtitle" style="margin-top: 0">Create multiple stores and manage each store menu.</p>
+
+                  <div class="admin-mode-switch" style="display: none; margin-bottom: 12px">
+                    <button id="existingStoreModeBtn" class="admin-mode-btn" type="button">Existing Store</button>
+                    <button id="newStoreModeBtn" class="admin-mode-btn" type="button">Add New Store</button>
+                  </div>
+
+                  <div id="storeSetupDefaultHint" class="admin-help-text" style="display: none; margin-bottom: 12px">
+                    Choose one option to continue.
+                  </div>
+
+                  <div id="storeQuickList" class="admin-store-quick-list" style="margin-bottom: 14px">
+                    <div class="admin-help-text">Loading stores...</div>
+                  </div>
+
+                  <div id="storeSetupContent" style="display: none">
+                    <div class="grid admin-form-grid">
+                      <div id="existingStoreSelectWrap" style="display: none">
+                        <label for="storeSelect">Select Store</label>
+                        <select id="storeSelect">
+                          <option value="">-- Select a store --</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div class="admin-label-row">
+                          <label for="storeNameInput">Store Name</label>
+                          <button id="editStoreNameBtn" class="admin-inline-edit" type="button" title="Edit Store Name">&#9998;</button>
+                        </div>
+                        <input id="storeNameInput" placeholder="Vedic Chai - Location Name" />
+                      </div>
+                      <div>
+                        <label for="storeIdDisplay">Store ID (Auto-generated)</label>
+                        <input id="storeIdDisplay" placeholder="Auto-generated after create" readonly />
+                      </div>
+                      <div>
+                        <div class="admin-label-row">
+                          <label for="storeAddressInput">Store Address</label>
+                          <button id="editStoreAddressBtn" class="admin-inline-edit" type="button" title="Edit Store Address">&#9998;</button>
+                        </div>
+                        <input id="storeAddressInput" placeholder="Full address" />
+                      </div>
+                      <div>
+                        <div class="admin-label-row">
+                          <label for="storeManagerInput">Store Manager Name</label>
+                          <button id="editStoreManagerBtn" class="admin-inline-edit" type="button" title="Edit Store Manager">&#9998;</button>
+                        </div>
+                        <input id="storeManagerInput" placeholder="Manager name" />
+                      </div>
+                      <div>
+                        <div class="admin-label-row">
+                          <label for="storeOpenTimeInput">Open Time</label>
+                          <button id="editStoreTimingBtn" class="admin-inline-edit" type="button" title="Edit Store Timings">&#9998;</button>
+                        </div>
+                        <input id="storeOpenTimeInput" type="time" />
+                      </div>
+                      <div>
+                        <label for="storeCloseTimeInput">Close Time</label>
+                        <input id="storeCloseTimeInput" type="time" />
+                      </div>
+                      <div style="grid-column: 1 / -1">
+                        <div class="admin-label-row">
+                          <label>Open Days</label>
+                          <button id="editStoreDaysBtn" class="admin-inline-edit" type="button" title="Edit Open Days">&#9998;</button>
+                        </div>
+                        <div id="storeOpenDaysList" class="grid admin-method-grid"></div>
+                      </div>
+                      <div>
+                        <div class="admin-label-row">
+                          <label for="storeUpiIdInput">Store UPI ID</label>
+                          <button id="editStorePaymentBtn" class="admin-inline-edit" type="button" title="Edit Store Payment">&#9998;</button>
+                        </div>
+                        <input id="storeUpiIdInput" placeholder="store@upi" />
+                      </div>
+                      <div style="grid-column: 1 / -1">
+                        <label>Store Enabled Payment Methods</label>
+                        <div id="storeEnabledMethodsList" class="grid admin-method-grid"></div>
+                      </div>
+                    </div>
+
+                    <div id="storeMenuSelectionHint" class="admin-help-text" style="margin-top: 12px">
+                      Select a store to view and manage its menu.
+                    </div>
+                    <div id="storeMenuSectionWrap" style="display: none">
+                      <div class="admin-label-row" style="margin: 16px 0 8px">
+                        <h3 style="margin: 0">Store Menu</h3>
+                        <button id="editStoreMenuBtn" class="admin-inline-edit" type="button" title="Edit Store Menu">&#9998;</button>
+                      </div>
+                      <div class="admin-table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Item Name</th>
+                              <th>Price (INR)</th>
+                              <th>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody id="storeMenuTableBody"></tbody>
+                        </table>
+                      </div>
+                      <div class="grid admin-form-grid" style="margin-top: 10px">
+                        <div>
+                          <label for="storeMenuFileInput">Upload Store Menu (Excel)</label>
+                          <input id="storeMenuFileInput" type="file" accept=".xlsx,.xls" />
+                        </div>
+                        <div style="display: flex; align-items: end">
+                          <button id="uploadStoreMenuBtn" type="button">Upload Excel</button>
+                        </div>
+                      </div>
+                      <div style="margin-top: 10px; display: flex; gap: 8px">
+                        <button id="addStoreMenuItemBtn" type="button">Add Store Menu Item</button>
+                        <button id="saveStoreSectionBtn" type="button">Save Store Setup</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div id="storeSetupStatus"></div>
+                </section>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="/admin.js?v=save-store-fix-20260214-2"></script>
+  </body>
+</html>

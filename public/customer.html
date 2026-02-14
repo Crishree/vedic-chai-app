@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vedic Chai - Pre-Order</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <h1 class="brand" id="customerAppTitle">Vedic Chai Grab And Go</h1>
+        <div>
+          <a href="/outlet">Outlet Dashboard</a>
+          |
+          <a href="/admin">Admin</a>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>Customer Details</h2>
+        <div class="grid">
+          <div>
+            <label for="customerName">Name</label>
+            <input id="customerName" placeholder="Enter your full name" />
+          </div>
+          <div>
+            <label for="phone">Phone</label>
+            <input id="phone" placeholder="Enter phone number" />
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Select Menu Items</h2>
+        <div id="menuList" class="grid"></div>
+      </section>
+
+      <section class="card">
+        <h2>Payment</h2>
+        <p>Advance payment required. This demo uses instant simulated payment.</p>
+        <label for="paymentMethod">Payment Method</label>
+        <select id="paymentMethod" style="width: 100%; border: 1px solid #c9b9a3; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; background: #fff">
+          <option>GPay</option>
+          <option>PhonePe</option>
+          <option>Paytm</option>
+          <option selected>UPI</option>
+          <option>Card</option>
+          <option>Cash</option>
+        </select>
+        <p><strong>Total: ₹<span id="totalAmount">0.00</span></strong></p>
+        <button id="payBtn">Pay & Place Order</button>
+        <div id="orderStatus"></div>
+      </section>
+
+      <section id="pickupCard" class="card" style="display: none">
+        <h2>Your Pickup Code</h2>
+        <p>Show this code at the Vedic Chai outlet for verification and handover.</p>
+        <div id="pickupCode" class="code-box"></div>
+        <div id="homeScreenPrompt" style="display: none; margin-top: 14px; border: 1px solid #d8c7b0; border-radius: 10px; padding: 12px; background: #fff8ef">
+          <p style="margin: 0 0 8px 0"><strong>Save for 1-tap reorder</strong></p>
+          <p style="margin: 0 0 6px 0; font-size: 14px">
+            Add this app to your home screen so you can pre-order next time from anywhere.
+          </p>
+          <p style="margin: 0; font-size: 13px; color: #6f5a45">
+            iPhone: Share icon -> Add to Home Screen
+            <br />
+            Android: Browser menu (3 dots) -> Add to Home screen
+          </p>
+        </div>
+      </section>
+    </main>
+    <script src="/customer.js"></script>
+  </body>
+</html>

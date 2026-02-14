@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Vedic Chai",
+    "slug": "vedic-chai-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#f6ead8"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#f6ead8"
+      }
+    }
+  }
+}

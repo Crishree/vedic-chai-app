@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Vedic Chai Admin",
+    "slug": "vedic-chai-admin",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#f6ead8"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vedicchai.admin"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#f6ead8"
+      },
+      "package": "com.vedicchai.admin"
+    }
+  }
+}
