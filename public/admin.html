@@ -254,6 +254,39 @@
                   <div id="brandSetupStatus"></div>
                 </section>
 
+                <section class="card admin-card" id="gatewaySetupSection">
+                  <h2>Payment Gateway Setup</h2>
+                  <p class="admin-subtitle" style="margin-top: 0">Configure payment mode and Razorpay credentials for future integration.</p>
+                  <div class="grid admin-form-grid">
+                    <div>
+                      <label for="gatewayModeSelect">Gateway Mode</label>
+                      <select id="gatewayModeSelect">
+                        <option value="direct_upi">Direct UPI</option>
+                        <option value="razorpay">Razorpay</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label for="razorpayKeyIdInput">Razorpay Key ID (Public)</label>
+                      <input id="razorpayKeyIdInput" placeholder="rzp_live_xxxxxxxx" />
+                    </div>
+                    <div>
+                      <label for="razorpayKeySecretInput">Razorpay Key Secret</label>
+                      <input id="razorpayKeySecretInput" placeholder="Paste secret key" />
+                    </div>
+                    <div>
+                      <label for="razorpayWebhookSecretInput">Razorpay Webhook Secret</label>
+                      <input id="razorpayWebhookSecretInput" placeholder="Paste webhook secret" />
+                    </div>
+                    <div style="grid-column: 1 / -1">
+                      <p class="admin-help-text">Suggested webhook URL: <code>/api/payments/razorpay/webhook</code></p>
+                    </div>
+                    <div style="display: flex; align-items: end">
+                      <button id="saveGatewaySetupBtn" type="button">Save Gateway Setup</button>
+                    </div>
+                  </div>
+                  <div id="gatewaySetupStatus"></div>
+                </section>
+
                 <section class="card admin-card">
                   <h2>Store Setup</h2>
                   <p class="admin-subtitle" style="margin-top: 0">Create multiple stores and manage each store menu.</p>
@@ -372,6 +405,48 @@
                   </div>
                   <div id="storeSetupStatus"></div>
                 </section>
+
+                <section class="card admin-card">
+                  <h2>Outlet App Credentials</h2>
+                  <p class="admin-subtitle" style="margin-top: 0">Create login credentials for each outlet store.</p>
+                  <div class="grid admin-form-grid">
+                    <div>
+                      <label for="outletCredStoreSelect">Store</label>
+                      <select id="outletCredStoreSelect">
+                        <option value="">-- Select a store --</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label for="outletCredUsernameInput">Outlet Username</label>
+                      <input id="outletCredUsernameInput" placeholder="outlet.koramangala" />
+                    </div>
+                    <div>
+                      <label for="outletCredPinInput">Outlet PIN</label>
+                      <input id="outletCredPinInput" placeholder="1234" />
+                    </div>
+                    <div>
+                      <label for="outletCredDisplayNameInput">Display Name (optional)</label>
+                      <input id="outletCredDisplayNameInput" placeholder="Koramangala Team" />
+                    </div>
+                    <div style="display: flex; align-items: end">
+                      <button id="saveOutletCredBtn" type="button">Save Outlet Login</button>
+                    </div>
+                  </div>
+                  <div id="outletCredStatus"></div>
+                  <div class="admin-table-wrap" style="margin-top: 12px">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Username</th>
+                          <th>Store</th>
+                          <th>Display Name</th>
+                          <th>Created At</th>
+                        </tr>
+                      </thead>
+                      <tbody id="outletCredTableBody"></tbody>
+                    </table>
+                  </div>
+                </section>
               </div>
             </section>
           </div>
@@ -380,6 +455,6 @@
     </main>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="/admin.js?v=save-store-fix-20260214-2"></script>
+    <script src="/admin.js?v=gateway-scaffold-20260214-1"></script>
   </body>
 </html>

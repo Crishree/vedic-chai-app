@@ -46,6 +46,12 @@ const brandLogoMeta = document.getElementById("brandLogoMeta");
 const useBrandLogoInput = document.getElementById("useBrandLogoInput");
 const saveBrandSetupBtn = document.getElementById("saveBrandSetupBtn");
 const brandSetupStatus = document.getElementById("brandSetupStatus");
+const gatewayModeSelect = document.getElementById("gatewayModeSelect");
+const razorpayKeyIdInput = document.getElementById("razorpayKeyIdInput");
+const razorpayKeySecretInput = document.getElementById("razorpayKeySecretInput");
+const razorpayWebhookSecretInput = document.getElementById("razorpayWebhookSecretInput");
+const saveGatewaySetupBtn = document.getElementById("saveGatewaySetupBtn");
+const gatewaySetupStatus = document.getElementById("gatewaySetupStatus");
 
 const analyticsStoreSelect = document.getElementById("analyticsStoreSelect");
 const storeSelect = document.getElementById("storeSelect");
@@ -83,6 +89,13 @@ const storeOrdersBody = document.getElementById("storeOrdersBody");
 const storeStatus = document.getElementById("storeStatus");
 const storeSetupStatus = document.getElementById("storeSetupStatus");
 const analyticsStoreSelectOrders = document.getElementById("analyticsStoreSelectOrders");
+const outletCredStoreSelect = document.getElementById("outletCredStoreSelect");
+const outletCredUsernameInput = document.getElementById("outletCredUsernameInput");
+const outletCredPinInput = document.getElementById("outletCredPinInput");
+const outletCredDisplayNameInput = document.getElementById("outletCredDisplayNameInput");
+const saveOutletCredBtn = document.getElementById("saveOutletCredBtn");
+const outletCredStatus = document.getElementById("outletCredStatus");
+const outletCredTableBody = document.getElementById("outletCredTableBody");
 
 const DEFAULT_METHODS = ["GPay", "PhonePe", "Paytm", "UPI", "Card", "Cash"];
 const ADMIN_CREDENTIALS = { username: "admin", pin: "4321" };
@@ -98,6 +111,7 @@ let selectedAnalyticsStoreId = "";
 let draftStoreMenu = [];
 let storeSetupMode = "none";
 let storeEditState = { name: false, address: false, manager: false, timing: false, days: false, payment: false, menu: false };
+let outletUsers = [];
 let brandLogoDataUrl = "";
 let analyticsRange = { preset: "last7", from: "", to: "" };
 let analyticsViewMode = "insights";
@@ -261,6 +275,10 @@ function showBrandStatus(message, type) {
   showStatus(brandSetupStatus, message, type);
 }
 
+function showGatewayStatus(message, type) {
+  showStatus(gatewaySetupStatus, message, type);
+}
+
 function showLoginStatus(message, type) {
   showStatus(adminLoginStatus, message, type);
 }
@@ -275,6 +293,10 @@ function showStoreSetupStatus(message, type) {
 
 function showAnalyticsRangeStatus(message, type) {
   showStatus(analyticsRangeStatus, message, type);
+}
+
+function showOutletCredStatus(message, type) {
+  showStatus(outletCredStatus, message, type);
 }
 
 function showPanel(panel) {
@@ -523,6 +545,12 @@ function renderBrandConfig(paymentConfig) {
   } else {
     brandLogoMeta.textContent = "No logo uploaded yet.";
   }
+  if (gatewayModeSelect) {
+    gatewayModeSelect.value = String(paymentConfig.paymentGatewayMode || "direct_upi").toLowerCase() === "razorpay" ? "razorpay" : "direct_upi";
+  }
+  if (razorpayKeyIdInput) razorpayKeyIdInput.value = String(paymentConfig.razorpayKeyId || "");
+  if (razorpayKeySecretInput) razorpayKeySecretInput.value = String(paymentConfig.razorpayKeySecret || "");
+  if (razorpayWebhookSecretInput) razorpayWebhookSecretInput.value = String(paymentConfig.razorpayWebhookSecret || "");
 }
 
 function renderStoreOpenDays(days = ALL_WEEK_DAYS) {
@@ -602,6 +630,32 @@ function renderStoreSelect() {
   if (analyticsStoreSelectOrders) {
     analyticsStoreSelectOrders.innerHTML = analyticsOptions.join("");
   }
+  if (outletCredStoreSelect) {
+    outletCredStoreSelect.innerHTML = [`<option value="">-- Select a store --</option>`]
+      .concat(stores.map((store) => `<option value="${store.id}">${store.name}</option>`))
+      .join("");
+  }
+}
+
+function renderOutletUsersTable() {
+  if (!outletCredTableBody) return;
+  if (!Array.isArray(outletUsers) || outletUsers.length === 0) {
+    outletCredTableBody.innerHTML = `<tr><td colspan="4">No outlet credentials created yet.</td></tr>`;
+    return;
+  }
+  outletCredTableBody.innerHTML = outletUsers
+    .map((user) => {
+      const createdAt = user.createdAt ? new Date(user.createdAt).toLocaleString() : "-";
+      return `
+        <tr>
+          <td>${user.username || "-"}</td>
+          <td>${user.storeName || user.storeId || "-"}</td>
+          <td>${user.displayName || "-"}</td>
+          <td>${createdAt}</td>
+        </tr>
+      `;
+    })
+    .join("");
 }
 
 function renderStoreQuickList() {
@@ -987,6 +1041,32 @@ async function saveBrandSetup() {
   }
 }
 
+async function saveGatewaySetup() {
+  if (!saveGatewaySetupBtn) return;
+  saveGatewaySetupBtn.disabled = true;
+  try {
+    const payload = {
+      paymentGatewayMode: gatewayModeSelect?.value || "direct_upi",
+      razorpayKeyId: razorpayKeyIdInput?.value?.trim() || "",
+      razorpayKeySecret: razorpayKeySecretInput?.value?.trim() || "",
+      razorpayWebhookSecret: razorpayWebhookSecretInput?.value?.trim() || ""
+    };
+    const res = await fetch("/api/admin/payment-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to save gateway setup.");
+    showGatewayStatus("Gateway setup saved.", "success");
+    renderBrandConfig(data.paymentConfig || {});
+  } catch (err) {
+    showGatewayStatus(err.message, "error");
+  } finally {
+    saveGatewaySetupBtn.disabled = false;
+  }
+}
+
 async function publishChanges() {
   if (!publishChangesBtn) return;
   if (isBrandFormDirty) {
@@ -1008,6 +1088,35 @@ async function publishChanges() {
   } finally {
     publishChangesBtn.textContent = originalLabel || "Publish Changes";
     await refreshAdminData();
+  }
+}
+
+async function saveOutletCredentials() {
+  const storeId = String(outletCredStoreSelect?.value || "").trim();
+  const username = String(outletCredUsernameInput?.value || "").trim().toLowerCase();
+  const pin = String(outletCredPinInput?.value || "").trim();
+  const displayName = String(outletCredDisplayNameInput?.value || "").trim();
+  if (!storeId || !username || !pin) {
+    showOutletCredStatus("Store, username and PIN are required.", "error");
+    return;
+  }
+
+  if (saveOutletCredBtn) saveOutletCredBtn.disabled = true;
+  try {
+    const res = await fetch("/api/admin/outlet-users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storeId, username, pin, displayName })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to save outlet credentials.");
+    showOutletCredStatus(data.message || "Outlet credentials saved.", "success");
+    if (outletCredPinInput) outletCredPinInput.value = "";
+    await refreshAdminData();
+  } catch (err) {
+    showOutletCredStatus(err.message, "error");
+  } finally {
+    if (saveOutletCredBtn) saveOutletCredBtn.disabled = false;
   }
 }
 
@@ -1177,6 +1286,7 @@ async function refreshAdminData() {
     renderPublishStatus(data.publishStatus || null);
 
     stores = Array.isArray(data.stores) ? data.stores : [];
+    outletUsers = Array.isArray(data.outletUsers) ? data.outletUsers : [];
     if (selectedStoreId && !stores.some((store) => store.id === selectedStoreId)) {
       selectedStoreId = "";
     }
@@ -1184,6 +1294,7 @@ async function refreshAdminData() {
       selectedAnalyticsStoreId = "";
     }
     renderStoreSelect();
+    renderOutletUsersTable();
     renderStoreQuickList();
     if (selectedAnalyticsStoreId) {
       await refreshStoreAnalytics(selectedAnalyticsStoreId);
@@ -1198,6 +1309,8 @@ async function refreshAdminData() {
     adminOrdersBody.innerHTML = `<tr><td colspan="6">Failed to fetch admin data.</td></tr>`;
     showStoreStatus("Failed to load stores.", "error");
     renderPublishStatus(null);
+    outletUsers = [];
+    renderOutletUsersTable();
   }
 }
 
@@ -1237,6 +1350,9 @@ function login() {
 }
 
 saveBrandSetupBtn.addEventListener("click", saveBrandSetup);
+if (saveGatewaySetupBtn) {
+  saveGatewaySetupBtn.addEventListener("click", saveGatewaySetup);
+}
 brandNameInput.addEventListener("input", () => {
   isBrandFormDirty = true;
 });
@@ -1327,6 +1443,9 @@ if (navLogoutBtn) {
 }
 if (publishChangesBtn) {
   publishChangesBtn.addEventListener("click", publishChanges);
+}
+if (saveOutletCredBtn) {
+  saveOutletCredBtn.addEventListener("click", saveOutletCredentials);
 }
 analyticsViewInsightsBtn.addEventListener("click", () => setAnalyticsView("insights"));
 analyticsViewOrdersBtn.addEventListener("click", () => setAnalyticsView("orders"));

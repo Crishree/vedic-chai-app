@@ -28,7 +28,11 @@ const paymentConfig = {
   bankName: "",
   accountNumber: "",
   ifsc: "",
-  enabledPaymentMethods: [...ALL_PAYMENT_METHODS]
+  enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
+  paymentGatewayMode: "direct_upi",
+  razorpayKeyId: "",
+  razorpayKeySecret: "",
+  razorpayWebhookSecret: ""
 };
 
 const orders = [];
@@ -44,6 +48,7 @@ const stores = [
     closeTime: "22:00",
     upiId: "vedicchai.koramangala@upi",
     enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
+    paymentGatewayMode: "direct_upi",
     createdAt: new Date().toISOString()
   },
   {
@@ -57,6 +62,7 @@ const stores = [
     closeTime: "22:00",
     upiId: "vedicchai.indiranagar@upi",
     enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
+    paymentGatewayMode: "direct_upi",
     createdAt: new Date().toISOString()
   },
   {
@@ -70,6 +76,7 @@ const stores = [
     closeTime: "22:00",
     upiId: "vedicchai.hsr@upi",
     enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
+    paymentGatewayMode: "direct_upi",
     createdAt: new Date().toISOString()
   },
   {
@@ -83,6 +90,7 @@ const stores = [
     closeTime: "22:00",
     upiId: "vedicchai.whitefield@upi",
     enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
+    paymentGatewayMode: "direct_upi",
     createdAt: new Date().toISOString()
   },
   {
@@ -96,9 +104,21 @@ const stores = [
     closeTime: "22:00",
     upiId: "vedicchai.jayanagar@upi",
     enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
+    paymentGatewayMode: "direct_upi",
     createdAt: new Date().toISOString()
   }
 ];
+const outletUsers = [
+  {
+    id: randomUUID(),
+    username: "outlet",
+    pin: "1234",
+    storeId: "blr-koramangala",
+    displayName: "Default Outlet User",
+    createdAt: new Date().toISOString()
+  }
+];
+const outletSessions = new Map();
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -137,6 +157,32 @@ function publishDraftState() {
     version: Number(publishedState.version || 0) + 1
   };
   return getPublishStatus();
+}
+
+function sanitizeOutletUser(user) {
+  const store = stores.find((entry) => entry.id === user.storeId);
+  return {
+    id: user.id,
+    username: user.username,
+    storeId: user.storeId,
+    storeName: store?.name || "",
+    displayName: user.displayName || "",
+    createdAt: user.createdAt
+  };
+}
+
+function getOutletSession(req) {
+  const authHeader = String(req.headers.authorization || "").trim();
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
+  const token = authHeader.slice(7).trim();
+  if (!token) return null;
+  const session = outletSessions.get(token);
+  if (!session) return null;
+  if (session.expiresAt <= Date.now()) {
+    outletSessions.delete(token);
+    return null;
+  }
+  return { token, ...session };
 }
 
 function sendJson(res, statusCode, payload) {
@@ -298,6 +344,8 @@ function normalizeStoreInput(body) {
         .map((method) => String(method || "").trim())
         .filter((method) => ALL_PAYMENT_METHODS.includes(method))
     : [...ALL_PAYMENT_METHODS];
+  const paymentGatewayMode = String(body?.paymentGatewayMode || "direct_upi").trim().toLowerCase();
+  const validGatewayMode = paymentGatewayMode === "razorpay" ? "razorpay" : "direct_upi";
 
   if (openDays.length === 0) {
     return { ok: false, error: "Select at least one open day." };
@@ -324,8 +372,18 @@ function normalizeStoreInput(body) {
       openTime,
       closeTime,
       upiId,
-      enabledPaymentMethods
+      enabledPaymentMethods,
+      paymentGatewayMode: validGatewayMode
     }
+  };
+}
+
+function getPublicPaymentConfig(config) {
+  const source = config || paymentConfig;
+  return {
+    ...source,
+    razorpayKeySecret: "",
+    razorpayWebhookSecret: ""
   };
 }
 
@@ -383,6 +441,96 @@ function handleApi(req, res, parsedUrl) {
     });
   }
 
+  if (req.method === "POST" && parsedUrl.pathname === "/api/outlet/login") {
+    return readBody(req)
+      .then((body) => {
+        const username = String(body?.username || "").trim().toLowerCase();
+        const pin = String(body?.pin || "").trim();
+        if (!username || !pin) {
+          return sendJson(res, 400, { error: "username and pin are required." });
+        }
+        const user = outletUsers.find((entry) => entry.username.toLowerCase() === username && entry.pin === pin);
+        if (!user) {
+          return sendJson(res, 401, { error: "Invalid outlet credentials." });
+        }
+        const store = stores.find((entry) => entry.id === user.storeId);
+        if (!store) {
+          return sendJson(res, 400, { error: "Assigned store for this outlet user is missing." });
+        }
+        const token = randomUUID();
+        outletSessions.set(token, {
+          userId: user.id,
+          username: user.username,
+          storeId: user.storeId,
+          expiresAt: Date.now() + 1000 * 60 * 60 * 12
+        });
+        return sendJson(res, 200, {
+          token,
+          profile: {
+            username: user.username,
+            storeId: user.storeId,
+            storeName: store.name,
+            displayName: user.displayName || ""
+          }
+        });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "GET" && parsedUrl.pathname === "/api/outlet/me") {
+    const session = getOutletSession(req);
+    if (!session) {
+      return sendJson(res, 401, { error: "Unauthorized outlet session." });
+    }
+    const user = outletUsers.find((entry) => entry.id === session.userId);
+    const store = stores.find((entry) => entry.id === session.storeId);
+    if (!user || !store) {
+      return sendJson(res, 401, { error: "Outlet profile is no longer available." });
+    }
+    return sendJson(res, 200, {
+      profile: {
+        username: user.username,
+        storeId: user.storeId,
+        storeName: store.name,
+        displayName: user.displayName || ""
+      }
+    });
+  }
+
+  if (req.method === "GET" && parsedUrl.pathname === "/api/outlet/orders") {
+    const session = getOutletSession(req);
+    if (!session) {
+      return sendJson(res, 401, { error: "Unauthorized outlet session." });
+    }
+    const storeOrders = orders.filter((order) => order.outletId === session.storeId);
+    return sendJson(res, 200, { orders: storeOrders });
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/outlet/verify-pickup") {
+    const session = getOutletSession(req);
+    if (!session) {
+      return sendJson(res, 401, { error: "Unauthorized outlet session." });
+    }
+    return readBody(req)
+      .then((body) => {
+        const code = (body.pickupCode || "").trim().toUpperCase();
+        if (!code) {
+          return sendJson(res, 400, { error: "pickupCode is required." });
+        }
+        const order = orders.find((entry) => entry.pickupCode === code && entry.outletId === session.storeId);
+        if (!order) {
+          return sendJson(res, 404, { error: "No order found for this code in your store." });
+        }
+        if (order.status === "COLLECTED") {
+          return sendJson(res, 409, { error: "Order already collected." });
+        }
+        order.status = "COLLECTED";
+        order.collectedAt = new Date().toISOString();
+        return sendJson(res, 200, { message: "Order verified and handed over.", order });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
   if (req.method === "POST" && parsedUrl.pathname === "/api/orders") {
     return readBody(req)
       .then((body) => {
@@ -396,6 +544,7 @@ function handleApi(req, res, parsedUrl) {
         const enabledMethods = Array.isArray(storeForOrder?.enabledPaymentMethods) && storeForOrder.enabledPaymentMethods.length
           ? storeForOrder.enabledPaymentMethods
           : ALL_PAYMENT_METHODS;
+        const paymentGatewayMode = String(storeForOrder?.paymentGatewayMode || paymentConfig.paymentGatewayMode || "direct_upi");
         if (paymentMethod && !enabledMethods.includes(paymentMethod)) {
           return sendJson(res, 400, { error: "Invalid payment method." });
         }
@@ -416,6 +565,11 @@ function handleApi(req, res, parsedUrl) {
           total,
           paid: true,
           paymentMethod: paymentMethod || enabledMethods[0] || "UPI",
+          paymentGateway: paymentGatewayMode,
+          paymentStatus: paymentGatewayMode === "razorpay" ? "created" : "captured",
+          gatewayOrderId: "",
+          gatewayPaymentId: "",
+          gatewaySignature: "",
           status: "READY_FOR_PICKUP",
           pickupCode,
           createdAt: new Date().toISOString()
@@ -439,6 +593,7 @@ function handleApi(req, res, parsedUrl) {
     const storePaymentConfig = store
       ? {
           upiId: store.upiId || "",
+          paymentGatewayMode: store.paymentGatewayMode || paymentConfig.paymentGatewayMode || "direct_upi",
           enabledPaymentMethods:
             Array.isArray(store.enabledPaymentMethods) && store.enabledPaymentMethods.length
               ? store.enabledPaymentMethods
@@ -446,6 +601,7 @@ function handleApi(req, res, parsedUrl) {
         }
       : {
           upiId: livePaymentConfig.upiId || "",
+          paymentGatewayMode: livePaymentConfig.paymentGatewayMode || "direct_upi",
           enabledPaymentMethods:
             Array.isArray(livePaymentConfig.enabledPaymentMethods) && livePaymentConfig.enabledPaymentMethods.length
               ? livePaymentConfig.enabledPaymentMethods
@@ -454,8 +610,9 @@ function handleApi(req, res, parsedUrl) {
 
     return sendJson(res, 200, {
       paymentConfig: {
-        ...livePaymentConfig,
+        ...getPublicPaymentConfig(livePaymentConfig),
         upiId: storePaymentConfig.upiId,
+        paymentGatewayMode: storePaymentConfig.paymentGatewayMode,
         enabledPaymentMethods: storePaymentConfig.enabledPaymentMethods
       },
       availablePaymentMethods: ALL_PAYMENT_METHODS,
@@ -498,6 +655,7 @@ function handleApi(req, res, parsedUrl) {
       paymentConfig,
       menu: MENU_ITEMS,
       publishStatus: getPublishStatus(),
+      outletUsers: outletUsers.map((user) => sanitizeOutletUser(user)),
       stores: stores.map((store) => ({
         ...store,
         summary: getStoreSummary(store.id, filteredOrders)
@@ -571,7 +729,60 @@ function handleApi(req, res, parsedUrl) {
       return sendJson(res, 404, { error: "Store not found." });
     }
     const [deletedStore] = stores.splice(storeIndex, 1);
+    for (let i = outletUsers.length - 1; i >= 0; i -= 1) {
+      if (outletUsers[i].storeId === deletedStore.id) {
+        outletUsers.splice(i, 1);
+      }
+    }
     return sendJson(res, 200, { message: "Store deleted.", store: deletedStore });
+  }
+
+  if (req.method === "GET" && parsedUrl.pathname === "/api/admin/outlet-users") {
+    return sendJson(res, 200, { outletUsers: outletUsers.map((user) => sanitizeOutletUser(user)) });
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/admin/outlet-users") {
+    return readBody(req)
+      .then((body) => {
+        const username = String(body?.username || "").trim().toLowerCase();
+        const pin = String(body?.pin || "").trim();
+        const storeId = String(body?.storeId || "").trim();
+        const displayName = String(body?.displayName || "").trim();
+        if (!username || !pin || !storeId) {
+          return sendJson(res, 400, { error: "username, pin and storeId are required." });
+        }
+        if (pin.length < 4) {
+          return sendJson(res, 400, { error: "PIN must be at least 4 characters." });
+        }
+        const store = stores.find((entry) => entry.id === storeId);
+        if (!store) {
+          return sendJson(res, 404, { error: "Store not found for outlet credentials." });
+        }
+        const existing = outletUsers.find((entry) => entry.username.toLowerCase() === username);
+        if (existing) {
+          existing.pin = pin;
+          existing.storeId = storeId;
+          existing.displayName = displayName;
+          return sendJson(res, 200, {
+            message: "Outlet credentials updated.",
+            outletUser: sanitizeOutletUser(existing)
+          });
+        }
+        const user = {
+          id: randomUUID(),
+          username,
+          pin,
+          storeId,
+          displayName,
+          createdAt: new Date().toISOString()
+        };
+        outletUsers.push(user);
+        return sendJson(res, 201, {
+          message: "Outlet credentials created.",
+          outletUser: sanitizeOutletUser(user)
+        });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
   }
 
   if (req.method === "GET" && parsedUrl.pathname === "/api/admin/store-performance") {
@@ -612,6 +823,8 @@ function handleApi(req, res, parsedUrl) {
         const nextCustomerPalette = CUSTOMER_APP_PALETTES.includes(requestedPalette)
           ? requestedPalette
           : String(paymentConfig.customerPalette || "sand");
+        const requestedGatewayMode = String(body.paymentGatewayMode || paymentConfig.paymentGatewayMode || "direct_upi").trim().toLowerCase();
+        const nextPaymentGatewayMode = requestedGatewayMode === "razorpay" ? "razorpay" : "direct_upi";
         const derivedPayeeName = nextBrandName || "Your Brand";
         const nextConfig = {
           brandName: nextBrandName,
@@ -628,7 +841,15 @@ function handleApi(req, res, parsedUrl) {
           bankName: body.bankName !== undefined ? String(body.bankName || "").trim() : paymentConfig.bankName,
           accountNumber: body.accountNumber !== undefined ? String(body.accountNumber || "").trim() : paymentConfig.accountNumber,
           ifsc: body.ifsc !== undefined ? String(body.ifsc || "").trim().toUpperCase() : paymentConfig.ifsc,
-          enabledPaymentMethods: Array.isArray(paymentConfig.enabledPaymentMethods) ? paymentConfig.enabledPaymentMethods : [...ALL_PAYMENT_METHODS]
+          enabledPaymentMethods: Array.isArray(paymentConfig.enabledPaymentMethods) ? paymentConfig.enabledPaymentMethods : [...ALL_PAYMENT_METHODS],
+          paymentGatewayMode: nextPaymentGatewayMode,
+          razorpayKeyId: body.razorpayKeyId !== undefined ? String(body.razorpayKeyId || "").trim() : String(paymentConfig.razorpayKeyId || "").trim(),
+          razorpayKeySecret:
+            body.razorpayKeySecret !== undefined ? String(body.razorpayKeySecret || "").trim() : String(paymentConfig.razorpayKeySecret || "").trim(),
+          razorpayWebhookSecret:
+            body.razorpayWebhookSecret !== undefined
+              ? String(body.razorpayWebhookSecret || "").trim()
+              : String(paymentConfig.razorpayWebhookSecret || "").trim()
         };
         if (nextConfig.brandLogoDataUrl && nextConfig.brandLogoDataUrl.length > 450000) {
           return sendJson(res, 400, { error: "Uploaded logo is too large. Keep it within 300 KB." });
@@ -640,6 +861,11 @@ function handleApi(req, res, parsedUrl) {
         return sendJson(res, 200, { message: "Payment configuration updated.", paymentConfig });
       })
       .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/payments/razorpay/webhook") {
+    // Scaffold endpoint for future Razorpay webhook signature verification and event processing.
+    return sendJson(res, 202, { message: "Webhook scaffold received. Razorpay event handling not enabled yet." });
   }
 
   return sendJson(res, 404, { error: "API route not found." });
