@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vedic Chai Admin Dashboard</title>
-    <link rel="stylesheet" href="/styles.css?v=admin-theme-20260213-2" />
+    <link rel="stylesheet" href="/styles.css?v=admin-login-refresh-20260215-2" />
   </head>
   <body class="admin-page">
     <main class="container">
@@ -15,28 +15,96 @@
             <input class="admin-search" placeholder="Search stores, orders, analytics..." />
           </div>
           <div class="admin-publish-wrap">
+            <p id="adminRoleBadge" class="admin-help-text" style="margin: 0"></p>
             <button id="publishChangesBtn" type="button">Publish Changes</button>
             <p id="publishMeta" class="admin-help-text" style="margin: 0"></p>
           </div>
         </header>
 
         <section class="card admin-card" id="adminLoginCard">
-          <h2>Admin Login</h2>
-          <p class="admin-subtitle" style="margin-top: 0">Login required to access dashboard.</p>
-          <div class="grid admin-form-grid">
-            <div>
-              <label for="adminUsername">Username</label>
-              <input id="adminUsername" placeholder="admin" />
+          <div class="admin-login-layout">
+            <div class="admin-login-left">
+              <p class="admin-login-kicker">Admin Portal</p>
+              <h2>Welcome back!</h2>
+              <p class="admin-subtitle admin-login-subtitle">Sign in to manage brand setup, stores, orders, and analytics.</p>
+              <div class="admin-auth-tabs">
+                <button id="adminAuthLoginTab" type="button" class="admin-auth-tab admin-auth-tab-active">Login</button>
+                <button id="adminAuthSignupTab" type="button" class="admin-auth-tab">Sign Up</button>
+              </div>
+
+              <div id="adminLoginForm" class="admin-login-form">
+                <div>
+                  <label for="adminUsername">Email</label>
+                  <input id="adminUsername" placeholder="name@company.com" />
+                </div>
+                <div>
+                  <label for="adminPin">Password</label>
+                  <input id="adminPin" type="password" placeholder="Enter password" />
+                </div>
+                <div class="admin-login-action-row">
+                  <button id="adminLoginBtn" type="button">Login</button>
+                </div>
+                <div class="admin-login-links">
+                  <button id="adminForgotBtn" type="button" class="admin-link-btn">Forgot password?</button>
+                </div>
+              </div>
+
+              <div id="adminSignupForm" class="admin-login-form" style="display: none">
+                <div>
+                  <label for="adminSignupName">Owner Name</label>
+                  <input id="adminSignupName" placeholder="Owner name" />
+                </div>
+                <div>
+                  <label for="adminSignupCompany">Company Name</label>
+                  <input id="adminSignupCompany" placeholder="Your brand/company" />
+                </div>
+                <div>
+                  <label for="adminSignupEmail">Email</label>
+                  <input id="adminSignupEmail" placeholder="name@company.com" />
+                </div>
+                <div>
+                  <label for="adminSignupRole">Role</label>
+                  <select id="adminSignupRole">
+                    <option value="owner">Owner (Full Access)</option>
+                    <option value="ops">Operations</option>
+                    <option value="finance">Finance</option>
+                  </select>
+                </div>
+                <div class="admin-login-action-row">
+                  <button id="adminSignupBtn" type="button">Create Account</button>
+                </div>
+              </div>
+
+              <div id="adminInviteSetupForm" class="admin-login-form" style="display: none">
+                <div>
+                  <label for="adminInviteName">Name</label>
+                  <input id="adminInviteName" placeholder="Your name" />
+                </div>
+                <div>
+                  <label for="adminInvitePassword">Set Password</label>
+                  <input id="adminInvitePassword" type="password" placeholder="Minimum 8 characters" />
+                </div>
+                <div>
+                  <label for="adminInviteConfirmPassword">Confirm Password</label>
+                  <input id="adminInviteConfirmPassword" type="password" placeholder="Re-enter password" />
+                </div>
+                <div class="admin-login-action-row">
+                  <button id="adminCompleteInviteBtn" type="button">Activate Account</button>
+                </div>
+              </div>
+              <div id="adminLoginStatus"></div>
             </div>
-            <div>
-              <label for="adminPin">PIN</label>
-              <input id="adminPin" type="password" inputmode="numeric" placeholder="4321" />
-            </div>
-            <div style="display: flex; align-items: end">
-              <button id="adminLoginBtn">Login</button>
+            <div class="admin-login-right">
+              <div class="admin-login-logo-badge">G&G</div>
+              <h3>Grab And Go</h3>
+              <p>Fast pickup operations for every outlet in your network.</p>
+              <div class="admin-login-illustration" aria-hidden="true">
+                <span class="admin-blob admin-blob-one"></span>
+                <span class="admin-blob admin-blob-two"></span>
+                <span class="admin-cup-icon">☕</span>
+              </div>
             </div>
           </div>
-          <div id="adminLoginStatus"></div>
         </section>
 
         <div id="adminContent" style="display: none">
@@ -256,15 +324,8 @@
 
                 <section class="card admin-card" id="gatewaySetupSection">
                   <h2>Payment Gateway Setup</h2>
-                  <p class="admin-subtitle" style="margin-top: 0">Configure payment mode and Razorpay credentials for future integration.</p>
+                  <p class="admin-subtitle" style="margin-top: 0">Razorpay configuration for payment gateway integration.</p>
                   <div class="grid admin-form-grid">
-                    <div>
-                      <label for="gatewayModeSelect">Gateway Mode</label>
-                      <select id="gatewayModeSelect">
-                        <option value="direct_upi">Direct UPI</option>
-                        <option value="razorpay">Razorpay</option>
-                      </select>
-                    </div>
                     <div>
                       <label for="razorpayKeyIdInput">Razorpay Key ID (Public)</label>
                       <input id="razorpayKeyIdInput" placeholder="rzp_live_xxxxxxxx" />
@@ -287,7 +348,7 @@
                   <div id="gatewaySetupStatus"></div>
                 </section>
 
-                <section class="card admin-card">
+                <section class="card admin-card" id="storeSetupSection">
                   <h2>Store Setup</h2>
                   <p class="admin-subtitle" style="margin-top: 0">Create multiple stores and manage each store menu.</p>
 
@@ -406,7 +467,7 @@
                   <div id="storeSetupStatus"></div>
                 </section>
 
-                <section class="card admin-card">
+                <section class="card admin-card" id="outletCredentialsSection">
                   <h2>Outlet App Credentials</h2>
                   <p class="admin-subtitle" style="margin-top: 0">Create login credentials for each outlet store.</p>
                   <div class="grid admin-form-grid">
@@ -447,14 +508,99 @@
                     </table>
                   </div>
                 </section>
+
+                <section class="card admin-card" id="adminUsersSection">
+                  <h2>Admin Users</h2>
+                  <p class="admin-subtitle" style="margin-top: 0">Owner-only: create, edit role/status, resend invite, and delete admin users.</p>
+                  <div class="grid admin-form-grid">
+                    <div>
+                      <label for="adminUserNameInput">Name</label>
+                      <input id="adminUserNameInput" placeholder="Admin name" />
+                      <p id="adminUserNameHint" class="admin-inline-hint"></p>
+                    </div>
+                    <div>
+                      <label for="adminUserEmailInput">Email</label>
+                      <input id="adminUserEmailInput" placeholder="name@company.com" />
+                      <p id="adminUserEmailHint" class="admin-inline-hint"></p>
+                    </div>
+                    <div>
+                      <label for="adminUserCompanyInput">Company</label>
+                      <input id="adminUserCompanyInput" placeholder="Company name" />
+                      <p id="adminUserCompanyHint" class="admin-inline-hint"></p>
+                    </div>
+                    <div>
+                      <label for="adminUserRoleInput">Role</label>
+                      <select id="adminUserRoleInput">
+                        <option value="owner">Owner</option>
+                        <option value="ops">Operations</option>
+                        <option value="finance">Finance</option>
+                      </select>
+                    </div>
+                    <div style="display: flex; align-items: end">
+                      <button id="createAdminUserBtn" type="button">Create & Send Invite</button>
+                    </div>
+                  </div>
+                  <div class="admin-table-wrap" style="margin-top: 12px">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Email</th>
+                          <th>Role</th>
+                          <th>Status</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody id="adminUsersBody"></tbody>
+                    </table>
+                  </div>
+                  <div id="adminUsersStatus"></div>
+                </section>
               </div>
             </section>
+
+            <div id="adminUserEditModal" class="admin-modal" style="display: none">
+              <div class="admin-modal-card">
+                <div class="admin-panel-head">
+                  <h3 style="margin: 0">Edit Admin User</h3>
+                  <button id="adminUserEditCloseBtn" type="button" class="admin-icon-btn" aria-label="Close edit modal">&#10005;</button>
+                </div>
+                <div class="grid admin-form-grid">
+                  <div>
+                    <label for="adminUserEditNameInput">Name</label>
+                    <input id="adminUserEditNameInput" placeholder="Admin name" />
+                    <p id="adminUserEditNameHint" class="admin-inline-hint"></p>
+                  </div>
+                  <div>
+                    <label for="adminUserEditRoleInput">Role</label>
+                    <select id="adminUserEditRoleInput">
+                      <option value="owner">Owner</option>
+                      <option value="ops">Operations</option>
+                      <option value="finance">Finance</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="adminUserEditStatusInput">Status</label>
+                    <select id="adminUserEditStatusInput">
+                      <option value="active">Active</option>
+                      <option value="pending">Pending</option>
+                      <option value="disabled">Disabled</option>
+                    </select>
+                    <p id="adminUserEditStatusHint" class="admin-inline-hint"></p>
+                  </div>
+                </div>
+                <div class="admin-modal-actions">
+                  <button id="adminUserEditSaveBtn" type="button"><span class="admin-btn-icon">&#10003;</span>Save Changes</button>
+                </div>
+                <div id="adminUserEditStatus"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="/admin.js?v=gateway-scaffold-20260214-1"></script>
+    <script src="/admin.js?v=admin-users-20260215-3"></script>
   </body>
 </html>

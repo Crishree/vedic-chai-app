@@ -30,6 +30,21 @@ const storeValueTrendChartCanvas = document.getElementById("storeValueTrendChart
 const adminUsernameInput = document.getElementById("adminUsername");
 const adminPinInput = document.getElementById("adminPin");
 const adminLoginBtn = document.getElementById("adminLoginBtn");
+const adminForgotBtn = document.getElementById("adminForgotBtn");
+const adminAuthLoginTab = document.getElementById("adminAuthLoginTab");
+const adminAuthSignupTab = document.getElementById("adminAuthSignupTab");
+const adminLoginForm = document.getElementById("adminLoginForm");
+const adminSignupForm = document.getElementById("adminSignupForm");
+const adminInviteSetupForm = document.getElementById("adminInviteSetupForm");
+const adminSignupNameInput = document.getElementById("adminSignupName");
+const adminSignupCompanyInput = document.getElementById("adminSignupCompany");
+const adminSignupEmailInput = document.getElementById("adminSignupEmail");
+const adminSignupRoleSelect = document.getElementById("adminSignupRole");
+const adminSignupBtn = document.getElementById("adminSignupBtn");
+const adminInviteNameInput = document.getElementById("adminInviteName");
+const adminInvitePasswordInput = document.getElementById("adminInvitePassword");
+const adminInviteConfirmPasswordInput = document.getElementById("adminInviteConfirmPassword");
+const adminCompleteInviteBtn = document.getElementById("adminCompleteInviteBtn");
 const adminLoginStatus = document.getElementById("adminLoginStatus");
 const adminBrandHeader = document.getElementById("adminBrandHeader");
 const adminBrandHeaderFallback = document.getElementById("adminBrandHeaderFallback");
@@ -39,6 +54,7 @@ const navStoresBtn = document.getElementById("navStoresBtn");
 const navLogoutBtn = document.getElementById("navLogoutBtn");
 const publishChangesBtn = document.getElementById("publishChangesBtn");
 const publishMeta = document.getElementById("publishMeta");
+const adminRoleBadge = document.getElementById("adminRoleBadge");
 
 const brandNameInput = document.getElementById("brandNameInput");
 const brandLogoFileInput = document.getElementById("brandLogoFileInput");
@@ -46,12 +62,16 @@ const brandLogoMeta = document.getElementById("brandLogoMeta");
 const useBrandLogoInput = document.getElementById("useBrandLogoInput");
 const saveBrandSetupBtn = document.getElementById("saveBrandSetupBtn");
 const brandSetupStatus = document.getElementById("brandSetupStatus");
-const gatewayModeSelect = document.getElementById("gatewayModeSelect");
 const razorpayKeyIdInput = document.getElementById("razorpayKeyIdInput");
 const razorpayKeySecretInput = document.getElementById("razorpayKeySecretInput");
 const razorpayWebhookSecretInput = document.getElementById("razorpayWebhookSecretInput");
 const saveGatewaySetupBtn = document.getElementById("saveGatewaySetupBtn");
 const gatewaySetupStatus = document.getElementById("gatewaySetupStatus");
+const brandSetupSection = document.getElementById("brandSetupSection");
+const gatewaySetupSection = document.getElementById("gatewaySetupSection");
+const storeSetupSection = document.getElementById("storeSetupSection");
+const outletCredentialsSection = document.getElementById("outletCredentialsSection");
+const adminUsersSection = document.getElementById("adminUsersSection");
 
 const analyticsStoreSelect = document.getElementById("analyticsStoreSelect");
 const storeSelect = document.getElementById("storeSelect");
@@ -96,9 +116,28 @@ const outletCredDisplayNameInput = document.getElementById("outletCredDisplayNam
 const saveOutletCredBtn = document.getElementById("saveOutletCredBtn");
 const outletCredStatus = document.getElementById("outletCredStatus");
 const outletCredTableBody = document.getElementById("outletCredTableBody");
+const adminUserNameInput = document.getElementById("adminUserNameInput");
+const adminUserEmailInput = document.getElementById("adminUserEmailInput");
+const adminUserCompanyInput = document.getElementById("adminUserCompanyInput");
+const adminUserRoleInput = document.getElementById("adminUserRoleInput");
+const adminUserNameHint = document.getElementById("adminUserNameHint");
+const adminUserEmailHint = document.getElementById("adminUserEmailHint");
+const adminUserCompanyHint = document.getElementById("adminUserCompanyHint");
+const createAdminUserBtn = document.getElementById("createAdminUserBtn");
+const adminUsersBody = document.getElementById("adminUsersBody");
+const adminUsersStatus = document.getElementById("adminUsersStatus");
+const adminUserEditModal = document.getElementById("adminUserEditModal");
+const adminUserEditCloseBtn = document.getElementById("adminUserEditCloseBtn");
+const adminUserEditNameInput = document.getElementById("adminUserEditNameInput");
+const adminUserEditRoleInput = document.getElementById("adminUserEditRoleInput");
+const adminUserEditStatusInput = document.getElementById("adminUserEditStatusInput");
+const adminUserEditNameHint = document.getElementById("adminUserEditNameHint");
+const adminUserEditStatusHint = document.getElementById("adminUserEditStatusHint");
+const adminUserEditSaveBtn = document.getElementById("adminUserEditSaveBtn");
+const adminUserEditStatus = document.getElementById("adminUserEditStatus");
 
 const DEFAULT_METHODS = ["GPay", "PhonePe", "Paytm", "UPI", "Card", "Cash"];
-const ADMIN_CREDENTIALS = { username: "admin", pin: "4321" };
+const ADMIN_AUTH_TOKEN_KEY = "admin_auth_token";
 const MAX_BRAND_LOGO_BYTES = 300 * 1024;
 const ALL_WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -117,6 +156,12 @@ let analyticsRange = { preset: "last7", from: "", to: "" };
 let analyticsViewMode = "insights";
 let isBrandFormDirty = false;
 let latestPublishStatus = null;
+let adminAuthToken = "";
+let adminProfile = null;
+let adminUsersData = [];
+let editingAdminUserId = "";
+let pendingInviteToken = "";
+let pendingResetToken = "";
 let charts = {
   networkValueTrend: null,
   networkPaymentMix: null,
@@ -299,14 +344,212 @@ function showOutletCredStatus(message, type) {
   showStatus(outletCredStatus, message, type);
 }
 
+function showAdminUsersStatus(message, type) {
+  showStatus(adminUsersStatus, message, type);
+}
+
+function showAdminUserEditStatus(message, type) {
+  showStatus(adminUserEditStatus, message, type);
+}
+
+function setInlineHint(node, message = "", type = "") {
+  if (!node) return;
+  node.textContent = message;
+  node.classList.remove("error", "success");
+  if (type) node.classList.add(type);
+}
+
+function validateEmailFormat(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function validateCreateAdminUserFields() {
+  const name = String(adminUserNameInput?.value || "").trim();
+  const email = String(adminUserEmailInput?.value || "").trim().toLowerCase();
+  const company = String(adminUserCompanyInput?.value || "").trim();
+  let valid = true;
+
+  if (!name) {
+    setInlineHint(adminUserNameHint, "Name is required.", "error");
+    valid = false;
+  } else {
+    setInlineHint(adminUserNameHint, "Looks good.", "success");
+  }
+  if (!email) {
+    setInlineHint(adminUserEmailHint, "Email is required.", "error");
+    valid = false;
+  } else if (!validateEmailFormat(email)) {
+    setInlineHint(adminUserEmailHint, "Enter a valid email address.", "error");
+    valid = false;
+  } else {
+    setInlineHint(adminUserEmailHint, "Valid email format.", "success");
+  }
+  if (!company) {
+    setInlineHint(adminUserCompanyHint, "Company is required.", "error");
+    valid = false;
+  } else {
+    setInlineHint(adminUserCompanyHint, "Looks good.", "success");
+  }
+  return valid;
+}
+
+function closeAdminUserEditModal() {
+  editingAdminUserId = "";
+  if (adminUserEditModal) adminUserEditModal.style.display = "none";
+  setInlineHint(adminUserEditNameHint, "", "");
+  setInlineHint(adminUserEditStatusHint, "", "");
+  showAdminUserEditStatus("", "success");
+}
+
+function openAdminUserEditModal(user) {
+  if (!user || !adminUserEditModal) return;
+  editingAdminUserId = user.id;
+  if (adminUserEditNameInput) adminUserEditNameInput.value = String(user.name || "");
+  if (adminUserEditRoleInput) adminUserEditRoleInput.value = String(user.role || "owner");
+  if (adminUserEditStatusInput) adminUserEditStatusInput.value = String(user.status || "pending");
+  setInlineHint(adminUserEditNameHint, "", "");
+  setInlineHint(adminUserEditStatusHint, "", "");
+  showAdminUserEditStatus("", "success");
+  adminUserEditModal.style.display = "grid";
+}
+
+async function saveAdminUserEdits() {
+  const id = String(editingAdminUserId || "").trim();
+  if (!id) return;
+  const name = String(adminUserEditNameInput?.value || "").trim();
+  const role = String(adminUserEditRoleInput?.value || "owner").trim().toLowerCase();
+  const status = String(adminUserEditStatusInput?.value || "active").trim().toLowerCase();
+  let valid = true;
+  if (!name) {
+    setInlineHint(adminUserEditNameHint, "Name is required.", "error");
+    valid = false;
+  } else {
+    setInlineHint(adminUserEditNameHint, "Looks good.", "success");
+  }
+  if (!["active", "pending", "disabled"].includes(status)) {
+    setInlineHint(adminUserEditStatusHint, "Choose active, pending, or disabled.", "error");
+    valid = false;
+  } else {
+    setInlineHint(adminUserEditStatusHint, "", "");
+  }
+  if (!valid) return;
+  if (adminUserEditSaveBtn) adminUserEditSaveBtn.disabled = true;
+  try {
+    await fetchAdmin(`/api/admin/users/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, role, status })
+    });
+    showAdminUsersStatus("Admin user updated.", "success");
+    closeAdminUserEditModal();
+    await refreshAdminUsers();
+  } catch (err) {
+    showAdminUserEditStatus(err.message, "error");
+  } finally {
+    if (adminUserEditSaveBtn) adminUserEditSaveBtn.disabled = false;
+  }
+}
+
+function setAdminAuthToken(token) {
+  adminAuthToken = String(token || "").trim();
+  if (adminAuthToken) {
+    localStorage.setItem(ADMIN_AUTH_TOKEN_KEY, adminAuthToken);
+  } else {
+    localStorage.removeItem(ADMIN_AUTH_TOKEN_KEY);
+  }
+}
+
+async function fetchAdmin(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (adminAuthToken) {
+    headers.Authorization = `Bearer ${adminAuthToken}`;
+  }
+  const res = await fetch(path, { ...options, headers });
+  let data = {};
+  try {
+    data = await res.json();
+  } catch {
+    data = {};
+  }
+  if (!res.ok) {
+    const err = new Error(data.error || "Request failed.");
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function setAuthMode(mode) {
+  const isLogin = mode === "login";
+  if (adminLoginForm) adminLoginForm.style.display = isLogin ? "grid" : "none";
+  if (adminSignupForm) adminSignupForm.style.display = isLogin ? "none" : "grid";
+  if (adminInviteSetupForm && !pendingInviteToken && !pendingResetToken) {
+    adminInviteSetupForm.style.display = "none";
+  }
+  if (adminAuthLoginTab) adminAuthLoginTab.classList.toggle("admin-auth-tab-active", isLogin);
+  if (adminAuthSignupTab) adminAuthSignupTab.classList.toggle("admin-auth-tab-active", !isLogin);
+}
+
+function setInviteMode(token, resetMode = false) {
+  pendingInviteToken = resetMode ? "" : token;
+  pendingResetToken = resetMode ? token : "";
+  if (adminLoginForm) adminLoginForm.style.display = "none";
+  if (adminSignupForm) adminSignupForm.style.display = "none";
+  if (adminInviteSetupForm) adminInviteSetupForm.style.display = "grid";
+  if (adminAuthLoginTab) adminAuthLoginTab.classList.remove("admin-auth-tab-active");
+  if (adminAuthSignupTab) adminAuthSignupTab.classList.remove("admin-auth-tab-active");
+  showLoginStatus(
+    resetMode ? "Set a new password to continue." : "Complete account setup by setting your password.",
+    "success"
+  );
+}
+
+function getRolePermissions(role) {
+  const normalized = String(role || "owner").trim().toLowerCase();
+  if (normalized === "owner") {
+    return { stores: true, payment: true, outletUsers: true, publish: true, adminUsers: true };
+  }
+  if (normalized === "ops") {
+    return { stores: true, payment: false, outletUsers: true, publish: true, adminUsers: false };
+  }
+  return { stores: false, payment: true, outletUsers: false, publish: true, adminUsers: false };
+}
+
+function applyRoleAccess() {
+  const role = String(adminProfile?.role || "owner").toLowerCase();
+  const perms = getRolePermissions(role);
+  if (adminRoleBadge) {
+    const label = role ? role.charAt(0).toUpperCase() + role.slice(1) : "Owner";
+    adminRoleBadge.textContent = `Role: ${label}`;
+  }
+  if (brandSetupSection) brandSetupSection.style.display = perms.payment ? "block" : "none";
+  if (gatewaySetupSection) gatewaySetupSection.style.display = perms.payment ? "block" : "none";
+  if (storeSetupSection) storeSetupSection.style.display = perms.stores ? "block" : "none";
+  if (outletCredentialsSection) outletCredentialsSection.style.display = perms.outletUsers ? "block" : "none";
+  if (adminUsersSection) adminUsersSection.style.display = perms.adminUsers ? "block" : "none";
+  if (navStoresBtn) navStoresBtn.style.display = perms.stores || perms.payment || perms.outletUsers ? "block" : "none";
+  if (goStoresBtn) goStoresBtn.style.display = perms.stores || perms.payment || perms.outletUsers ? "block" : "none";
+  if (saveStoreSectionBtn) saveStoreSectionBtn.style.display = perms.stores ? "inline-flex" : "none";
+  if (saveOutletCredBtn) saveOutletCredBtn.style.display = perms.outletUsers ? "inline-flex" : "none";
+  if (saveBrandSetupBtn) saveBrandSetupBtn.style.display = perms.payment ? "inline-flex" : "none";
+  if (saveGatewaySetupBtn) saveGatewaySetupBtn.style.display = perms.payment ? "inline-flex" : "none";
+  if (!perms.adminUsers) {
+    adminUsersData = [];
+    renderAdminUsersTable();
+  }
+}
+
 function showPanel(panel) {
-  adminHomePanel.style.display = panel === "home" ? "block" : "none";
-  analyticsPanel.style.display = panel === "analytics" ? "block" : "none";
-  storesPanel.style.display = panel === "stores" ? "block" : "none";
-  if (navHomeBtn) navHomeBtn.classList.toggle("admin-side-btn-active", panel === "home");
-  if (navAnalyticsBtn) navAnalyticsBtn.classList.toggle("admin-side-btn-active", panel === "analytics");
-  if (navStoresBtn) navStoresBtn.classList.toggle("admin-side-btn-active", panel === "stores");
-  if (panel === "analytics") {
+  const perms = getRolePermissions(adminProfile?.role || "owner");
+  const canOpenStores = perms.stores || perms.payment || perms.outletUsers;
+  const safePanel = panel === "stores" && !canOpenStores ? "home" : panel;
+  adminHomePanel.style.display = safePanel === "home" ? "block" : "none";
+  analyticsPanel.style.display = safePanel === "analytics" ? "block" : "none";
+  storesPanel.style.display = safePanel === "stores" ? "block" : "none";
+  if (navHomeBtn) navHomeBtn.classList.toggle("admin-side-btn-active", safePanel === "home");
+  if (navAnalyticsBtn) navAnalyticsBtn.classList.toggle("admin-side-btn-active", safePanel === "analytics");
+  if (navStoresBtn) navStoresBtn.classList.toggle("admin-side-btn-active", safePanel === "stores");
+  if (safePanel === "analytics") {
     setAnalyticsView(analyticsViewMode);
   }
 }
@@ -545,9 +788,6 @@ function renderBrandConfig(paymentConfig) {
   } else {
     brandLogoMeta.textContent = "No logo uploaded yet.";
   }
-  if (gatewayModeSelect) {
-    gatewayModeSelect.value = String(paymentConfig.paymentGatewayMode || "direct_upi").toLowerCase() === "razorpay" ? "razorpay" : "direct_upi";
-  }
   if (razorpayKeyIdInput) razorpayKeyIdInput.value = String(paymentConfig.razorpayKeyId || "");
   if (razorpayKeySecretInput) razorpayKeySecretInput.value = String(paymentConfig.razorpayKeySecret || "");
   if (razorpayWebhookSecretInput) razorpayWebhookSecretInput.value = String(paymentConfig.razorpayWebhookSecret || "");
@@ -658,6 +898,101 @@ function renderOutletUsersTable() {
     .join("");
 }
 
+function renderAdminUsersTable() {
+  if (!adminUsersBody) return;
+  const role = String(adminProfile?.role || "owner").toLowerCase();
+  if (role !== "owner") {
+    adminUsersBody.innerHTML = `<tr><td colspan="5">Only owner can manage admin users.</td></tr>`;
+    return;
+  }
+  if (!Array.isArray(adminUsersData) || adminUsersData.length === 0) {
+    adminUsersBody.innerHTML = `<tr><td colspan="5">No admin users yet.</td></tr>`;
+    return;
+  }
+  adminUsersBody.innerHTML = adminUsersData
+    .map((user) => {
+      const isSelf = user.id === adminProfile?.id;
+      const displayName = user.name || "-";
+      const roleLabel = String(user.role || "owner");
+      const statusLabel = String(user.status || "pending");
+      return `
+        <tr>
+          <td>${displayName}</td>
+          <td>${user.email || "-"}</td>
+          <td>${roleLabel}</td>
+          <td>${statusLabel}</td>
+          <td>
+            <div class="admin-users-actions">
+              <button class="admin-user-action-btn" type="button" data-admin-user-edit="${user.id}"><span>&#9998;</span>Edit</button>
+              <button class="admin-user-action-btn" type="button" data-admin-user-invite="${user.id}"><span>&#9993;</span>Resend</button>
+              <button class="admin-user-action-btn delete" type="button" data-admin-user-delete="${user.id}" ${isSelf ? "disabled" : ""}><span>&#128465;</span>Delete</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  adminUsersBody.querySelectorAll("button[data-admin-user-edit]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = String(btn.getAttribute("data-admin-user-edit") || "").trim();
+      if (!id) return;
+      const user = adminUsersData.find((entry) => entry.id === id);
+      if (!user) return;
+      openAdminUserEditModal(user);
+    });
+  });
+
+  adminUsersBody.querySelectorAll("button[data-admin-user-invite]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = String(btn.getAttribute("data-admin-user-invite") || "").trim();
+      if (!id) return;
+      try {
+        const data = await fetchAdmin(`/api/admin/users/${encodeURIComponent(id)}/resend-invite`, { method: "POST" });
+        const extra = data?.inviteLink ? ` Invite preview: ${data.inviteLink}` : "";
+        showAdminUsersStatus(`Invite resent.${extra}`, "success");
+      } catch (err) {
+        showAdminUsersStatus(err.message, "error");
+      }
+    });
+  });
+
+  adminUsersBody.querySelectorAll("button[data-admin-user-delete]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = String(btn.getAttribute("data-admin-user-delete") || "").trim();
+      if (!id) return;
+      const user = adminUsersData.find((entry) => entry.id === id);
+      const confirmed = window.confirm(`Delete admin user "${user?.email || id}"?`);
+      if (!confirmed) return;
+      try {
+        await fetchAdmin(`/api/admin/users/${encodeURIComponent(id)}`, { method: "DELETE" });
+        showAdminUsersStatus("Admin user deleted.", "success");
+        await refreshAdminUsers();
+      } catch (err) {
+        showAdminUsersStatus(err.message, "error");
+      }
+    });
+  });
+}
+
+async function refreshAdminUsers() {
+  const role = String(adminProfile?.role || "owner").toLowerCase();
+  if (role !== "owner") {
+    adminUsersData = [];
+    renderAdminUsersTable();
+    return;
+  }
+  try {
+    const data = await fetchAdmin("/api/admin/users");
+    adminUsersData = Array.isArray(data.users) ? data.users : [];
+    renderAdminUsersTable();
+  } catch (err) {
+    adminUsersData = [];
+    renderAdminUsersTable();
+    showAdminUsersStatus(err.message, "error");
+  }
+}
+
 function renderStoreQuickList() {
   if (!storeQuickList) return;
   const rows = stores
@@ -703,9 +1038,7 @@ function renderStoreQuickList() {
       );
       if (!confirmed) return;
       try {
-        const res = await fetch(`/api/admin/stores/${encodeURIComponent(storeId)}`, { method: "DELETE" });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to delete store.");
+        await fetchAdmin(`/api/admin/stores/${encodeURIComponent(storeId)}`, { method: "DELETE" });
         if (selectedStoreId === storeId) {
           selectedStoreId = "";
           clearStoreForm();
@@ -974,9 +1307,7 @@ async function refreshStoreAnalytics(storeId) {
       params.set("dateFrom", analyticsRange.from);
       params.set("dateTo", analyticsRange.to);
     }
-    const res = await fetch(`/api/admin/store-performance?${params.toString()}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to load store performance.");
+    const data = await fetchAdmin(`/api/admin/store-performance?${params.toString()}`);
 
     renderStoreSummary(data.store.summary);
     renderStoreOrders(data.orders || []);
@@ -996,9 +1327,7 @@ async function loadStoreForEditor(storeId) {
     return;
   }
   try {
-    const res = await fetch(`/api/admin/store-performance?storeId=${encodeURIComponent(storeId)}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to load store.");
+    const data = await fetchAdmin(`/api/admin/store-performance?storeId=${encodeURIComponent(storeId)}`);
     const store = data.store;
     selectedStoreId = store.id;
     storeIdDisplay.value = store.id || "";
@@ -1024,13 +1353,11 @@ async function saveBrandSetup() {
   saveBrandSetupBtn.disabled = true;
   try {
     const brandPayload = await buildBrandPayload();
-    const res = await fetch("/api/admin/payment-config", {
+    const data = await fetchAdmin("/api/admin/payment-config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(brandPayload)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to save brand setup.");
     isBrandFormDirty = false;
     renderBrandConfig(data.paymentConfig || {});
     showBrandStatus("Brand setup saved.", "success");
@@ -1046,18 +1373,16 @@ async function saveGatewaySetup() {
   saveGatewaySetupBtn.disabled = true;
   try {
     const payload = {
-      paymentGatewayMode: gatewayModeSelect?.value || "direct_upi",
+      paymentGatewayMode: "razorpay",
       razorpayKeyId: razorpayKeyIdInput?.value?.trim() || "",
       razorpayKeySecret: razorpayKeySecretInput?.value?.trim() || "",
       razorpayWebhookSecret: razorpayWebhookSecretInput?.value?.trim() || ""
     };
-    const res = await fetch("/api/admin/payment-config", {
+    const data = await fetchAdmin("/api/admin/payment-config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to save gateway setup.");
     showGatewayStatus("Gateway setup saved.", "success");
     renderBrandConfig(data.paymentConfig || {});
   } catch (err) {
@@ -1078,9 +1403,7 @@ async function publishChanges() {
   const originalLabel = publishChangesBtn.textContent;
   publishChangesBtn.textContent = "Publishing...";
   try {
-    const res = await fetch("/api/admin/publish", { method: "POST" });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to publish.");
+    const data = await fetchAdmin("/api/admin/publish", { method: "POST" });
     renderPublishStatus(data.publishStatus || null);
     showStoreSetupStatus("Changes published. Customer app now uses latest data.", "success");
   } catch (err) {
@@ -1103,13 +1426,11 @@ async function saveOutletCredentials() {
 
   if (saveOutletCredBtn) saveOutletCredBtn.disabled = true;
   try {
-    const res = await fetch("/api/admin/outlet-users", {
+    const data = await fetchAdmin("/api/admin/outlet-users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ storeId, username, pin, displayName })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to save outlet credentials.");
     showOutletCredStatus(data.message || "Outlet credentials saved.", "success");
     if (outletCredPinInput) outletCredPinInput.value = "";
     await refreshAdminData();
@@ -1188,13 +1509,11 @@ async function createStore() {
 
   saveStoreSectionBtn.disabled = true;
   try {
-    const res = await fetch("/api/admin/stores", {
+    const data = await fetchAdmin("/api/admin/stores", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to create store.");
     showStoreSetupStatus(`Store created. Store ID: ${data.store.id}`, "success");
     await refreshAdminData();
     selectedStoreId = data.store.id;
@@ -1244,13 +1563,11 @@ async function updateStore() {
 
   saveStoreSectionBtn.disabled = true;
   try {
-    const res = await fetch(`/api/admin/stores/${encodeURIComponent(selectedStoreId)}`, {
+    const data = await fetchAdmin(`/api/admin/stores/${encodeURIComponent(selectedStoreId)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to update store.");
     showStoreSetupStatus(`Store updated: ${data.store.id}`, "success");
     resetStoreEditState();
     await refreshAdminData();
@@ -1268,9 +1585,7 @@ async function updateStore() {
 
 async function refreshAdminData() {
   try {
-    const res = await fetch(`/api/admin/summary${buildAnalyticsQueryParams()}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to load admin data.");
+    const data = await fetchAdmin(`/api/admin/summary${buildAnalyticsQueryParams()}`);
 
     renderSummary(data.summary || {});
     const networkOrders = Array.isArray(data.orders) ? data.orders : [];
@@ -1296,6 +1611,7 @@ async function refreshAdminData() {
     renderStoreSelect();
     renderOutletUsersTable();
     renderStoreQuickList();
+    await refreshAdminUsers();
     if (selectedAnalyticsStoreId) {
       await refreshStoreAnalytics(selectedAnalyticsStoreId);
     } else {
@@ -1304,6 +1620,11 @@ async function refreshAdminData() {
       renderStoreCharts([]);
     }
   } catch (err) {
+    if (err?.status === 401) {
+      logout(false);
+      showLoginStatus("Session expired. Please login again.", "error");
+      return;
+    }
     summaryGrid.innerHTML = metricCard("Error", err.message);
     paymentGrid.innerHTML = "";
     adminOrdersBody.innerHTML = `<tr><td colspan="6">Failed to fetch admin data.</td></tr>`;
@@ -1311,6 +1632,8 @@ async function refreshAdminData() {
     renderPublishStatus(null);
     outletUsers = [];
     renderOutletUsersTable();
+    adminUsersData = [];
+    renderAdminUsersTable();
   }
 }
 
@@ -1320,33 +1643,217 @@ function startAutoRefresh() {
   refreshTimer = setInterval(refreshAdminData, 5000);
 }
 
-function logout() {
+async function logout(showMessage = true) {
+  if (adminAuthToken) {
+    try {
+      await fetchAdmin("/api/admin/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
+    }
+  }
   if (refreshTimer) {
     clearInterval(refreshTimer);
     refreshTimer = null;
   }
+  setAdminAuthToken("");
+  adminProfile = null;
   adminContent.style.display = "none";
   adminLoginCard.style.display = "block";
   adminPinInput.value = "";
   adminUsernameInput.value = "";
+  if (adminInvitePasswordInput) adminInvitePasswordInput.value = "";
+  if (adminInviteConfirmPasswordInput) adminInviteConfirmPasswordInput.value = "";
+  pendingInviteToken = "";
+  pendingResetToken = "";
+  if (adminRoleBadge) adminRoleBadge.textContent = "";
+  closeAdminUserEditModal();
+  setAuthMode("login");
   showPanel("home");
-  showLoginStatus("Logged out.", "success");
+  if (showMessage) showLoginStatus("Logged out.", "success");
 }
 
-function login() {
-  const username = adminUsernameInput.value.trim().toLowerCase();
-  const pin = adminPinInput.value.trim();
-  if (username === ADMIN_CREDENTIALS.username && pin === ADMIN_CREDENTIALS.pin) {
+async function login() {
+  const email = adminUsernameInput.value.trim().toLowerCase();
+  const password = adminPinInput.value.trim();
+  if (!email || !password) {
+    showLoginStatus("Enter email and password.", "error");
+    return;
+  }
+  try {
+    const data = await fetch("/api/admin/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Login failed.");
+      return json;
+    });
+    setAdminAuthToken(data.token || "");
+    adminProfile = data.admin || null;
     adminLoginCard.style.display = "none";
     adminContent.style.display = "block";
+    applyRoleAccess();
     showPanel("home");
-    adminUsernameInput.value = "";
     adminPinInput.value = "";
     showLoginStatus("", "success");
     startAutoRefresh();
+  } catch (err) {
+    showLoginStatus(err.message, "error");
+  }
+}
+
+async function signupAdmin() {
+  const email = String(adminSignupEmailInput?.value || "").trim().toLowerCase();
+  const name = String(adminSignupNameInput?.value || "").trim();
+  const companyName = String(adminSignupCompanyInput?.value || "").trim();
+  const role = String(adminSignupRoleSelect?.value || "owner").trim().toLowerCase();
+  if (!email || !companyName) {
+    showLoginStatus("Company name and email are required.", "error");
     return;
   }
-  showLoginStatus("Invalid admin credentials.", "error");
+  try {
+    const data = await fetch("/api/admin/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, name, companyName, role })
+    }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Signup failed.");
+      return json;
+    });
+    const previewText = data?.inviteLink ? ` Invite preview: ${data.inviteLink}` : "";
+    showLoginStatus(`Signup created. Invite sent to ${email}.${previewText}`, "success");
+    setAuthMode("login");
+    adminUsernameInput.value = email;
+  } catch (err) {
+    showLoginStatus(err.message, "error");
+  }
+}
+
+async function createAdminUser() {
+  const name = String(adminUserNameInput?.value || "").trim();
+  const email = String(adminUserEmailInput?.value || "").trim().toLowerCase();
+  const companyName = String(adminUserCompanyInput?.value || "").trim();
+  const role = String(adminUserRoleInput?.value || "owner").trim().toLowerCase();
+  if (!validateCreateAdminUserFields()) {
+    showAdminUsersStatus("Fix highlighted fields and try again.", "error");
+    return;
+  }
+  if (createAdminUserBtn) createAdminUserBtn.disabled = true;
+  try {
+    const data = await fetchAdmin("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, companyName, role })
+    });
+    const extra = data?.inviteLink ? ` Invite preview: ${data.inviteLink}` : "";
+    showAdminUsersStatus(`Admin user saved.${extra}`, "success");
+    if (adminUserNameInput) adminUserNameInput.value = "";
+    if (adminUserEmailInput) adminUserEmailInput.value = "";
+    if (adminUserCompanyInput) adminUserCompanyInput.value = "";
+    if (adminUserRoleInput) adminUserRoleInput.value = "owner";
+    await refreshAdminUsers();
+  } catch (err) {
+    showAdminUsersStatus(err.message, "error");
+  } finally {
+    if (createAdminUserBtn) createAdminUserBtn.disabled = false;
+  }
+}
+
+async function completeInviteOrReset() {
+  const password = String(adminInvitePasswordInput?.value || "").trim();
+  const confirmPassword = String(adminInviteConfirmPasswordInput?.value || "").trim();
+  const name = String(adminInviteNameInput?.value || "").trim();
+  if (!password || password.length < 8) {
+    showLoginStatus("Password must be at least 8 characters.", "error");
+    return;
+  }
+  if (password !== confirmPassword) {
+    showLoginStatus("Password and confirm password do not match.", "error");
+    return;
+  }
+  const isReset = Boolean(pendingResetToken);
+  const token = isReset ? pendingResetToken : pendingInviteToken;
+  if (!token) {
+    showLoginStatus("Invite/reset token missing.", "error");
+    return;
+  }
+  try {
+    const endpoint = isReset ? "/api/admin/auth/reset-password" : "/api/admin/auth/complete-invite";
+    const payload = isReset ? { token, password } : { token, password, name };
+    const data = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Action failed.");
+      return json;
+    });
+    showLoginStatus(data.message || "Done. Please login.", "success");
+    pendingInviteToken = "";
+    pendingResetToken = "";
+    adminInvitePasswordInput.value = "";
+    adminInviteConfirmPasswordInput.value = "";
+    setAuthMode("login");
+  } catch (err) {
+    showLoginStatus(err.message, "error");
+  }
+}
+
+async function forgotPassword() {
+  const email = adminUsernameInput.value.trim().toLowerCase();
+  if (!email) {
+    showLoginStatus("Enter your admin email first, then click Forgot password.", "error");
+    return;
+  }
+  try {
+    const data = await fetch("/api/admin/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email })
+    }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Could not process request.");
+      return json;
+    });
+    const previewText = data?.resetLink ? ` Reset preview: ${data.resetLink}` : "";
+    showLoginStatus(`Password reset instructions sent if account exists.${previewText}`, "success");
+  } catch (err) {
+    showLoginStatus(err.message, "error");
+  }
+}
+
+async function bootstrapAdminAuth() {
+  const params = new URLSearchParams(window.location.search);
+  const inviteToken = String(params.get("inviteToken") || "").trim();
+  const resetToken = String(params.get("resetToken") || "").trim();
+  if (inviteToken) {
+    setInviteMode(inviteToken, false);
+    return;
+  }
+  if (resetToken) {
+    setInviteMode(resetToken, true);
+    return;
+  }
+  setAuthMode("login");
+  const storedToken = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
+  if (!storedToken) return;
+  setAdminAuthToken(storedToken);
+  try {
+    const meData = await fetchAdmin("/api/admin/auth/me");
+    adminProfile = meData.admin || null;
+    adminLoginCard.style.display = "none";
+    adminContent.style.display = "block";
+    applyRoleAccess();
+    showPanel("home");
+    startAutoRefresh();
+  } catch {
+    setAdminAuthToken("");
+    adminLoginCard.style.display = "block";
+    adminContent.style.display = "none";
+  }
 }
 
 saveBrandSetupBtn.addEventListener("click", saveBrandSetup);
@@ -1371,6 +1878,11 @@ brandLogoFileInput.addEventListener("change", () => {
   brandLogoMeta.textContent = `${file.name} selected (${kb} KB).`;
 });
 adminLoginBtn.addEventListener("click", login);
+if (adminSignupBtn) adminSignupBtn.addEventListener("click", signupAdmin);
+if (adminForgotBtn) adminForgotBtn.addEventListener("click", forgotPassword);
+if (adminAuthLoginTab) adminAuthLoginTab.addEventListener("click", () => setAuthMode("login"));
+if (adminAuthSignupTab) adminAuthSignupTab.addEventListener("click", () => setAuthMode("signup"));
+if (adminCompleteInviteBtn) adminCompleteInviteBtn.addEventListener("click", completeInviteOrReset);
 
 if (existingStoreModeBtn) existingStoreModeBtn.addEventListener("click", () => setStoreSetupMode("existing"));
 if (newStoreModeBtn) newStoreModeBtn.addEventListener("click", () => setStoreSetupMode("new"));
@@ -1439,13 +1951,27 @@ if (navStoresBtn) {
   });
 }
 if (navLogoutBtn) {
-  navLogoutBtn.addEventListener("click", logout);
+  navLogoutBtn.addEventListener("click", () => logout(true));
 }
 if (publishChangesBtn) {
   publishChangesBtn.addEventListener("click", publishChanges);
 }
 if (saveOutletCredBtn) {
   saveOutletCredBtn.addEventListener("click", saveOutletCredentials);
+}
+if (createAdminUserBtn) {
+  createAdminUserBtn.addEventListener("click", createAdminUser);
+}
+if (adminUserEditCloseBtn) {
+  adminUserEditCloseBtn.addEventListener("click", closeAdminUserEditModal);
+}
+if (adminUserEditSaveBtn) {
+  adminUserEditSaveBtn.addEventListener("click", saveAdminUserEdits);
+}
+if (adminUserEditModal) {
+  adminUserEditModal.addEventListener("click", (event) => {
+    if (event.target === adminUserEditModal) closeAdminUserEditModal();
+  });
 }
 analyticsViewInsightsBtn.addEventListener("click", () => setAnalyticsView("insights"));
 analyticsViewOrdersBtn.addEventListener("click", () => setAnalyticsView("orders"));
@@ -1491,9 +2017,53 @@ resetAnalyticsRangeBtn.addEventListener("click", async () => {
 adminPinInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") login();
 });
+if (adminInviteConfirmPasswordInput) {
+  adminInviteConfirmPasswordInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") completeInviteOrReset();
+  });
+}
+if (adminSignupEmailInput) {
+  adminSignupEmailInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") signupAdmin();
+  });
+}
+if (adminUserEmailInput) {
+  adminUserEmailInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") createAdminUser();
+  });
+  adminUserEmailInput.addEventListener("blur", validateCreateAdminUserFields);
+}
+if (adminUserNameInput) {
+  adminUserNameInput.addEventListener("blur", validateCreateAdminUserFields);
+}
+if (adminUserCompanyInput) {
+  adminUserCompanyInput.addEventListener("blur", validateCreateAdminUserFields);
+}
+if (adminUserEditNameInput) {
+  adminUserEditNameInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") saveAdminUserEdits();
+  });
+  adminUserEditNameInput.addEventListener("blur", () => {
+    const value = String(adminUserEditNameInput.value || "").trim();
+    setInlineHint(adminUserEditNameHint, value ? "Looks good." : "Name is required.", value ? "success" : "error");
+  });
+}
+if (adminUserEditStatusInput) {
+  adminUserEditStatusInput.addEventListener("change", () => {
+    const value = String(adminUserEditStatusInput.value || "").trim().toLowerCase();
+    const ok = ["active", "pending", "disabled"].includes(value);
+    setInlineHint(adminUserEditStatusHint, ok ? "" : "Choose active, pending, or disabled.", ok ? "" : "error");
+  });
+}
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && adminUserEditModal && adminUserEditModal.style.display !== "none") {
+    closeAdminUserEditModal();
+  }
+});
 
 applyStoreSetupModeUi();
 applyPresetToInputs("last7");
 analyticsRange = { preset: "last7", from: analyticsDateFrom.value, to: analyticsDateTo.value };
 updateAnalyticsRangeUi();
 setAnalyticsView("insights");
+bootstrapAdminAuth();

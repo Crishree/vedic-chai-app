@@ -1,7 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { randomUUID } = require("crypto");
+const { randomUUID, randomBytes, scryptSync, timingSafeEqual } = require("crypto");
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -16,6 +16,7 @@ let MENU_ITEMS = [
 const ALL_PAYMENT_METHODS = ["GPay", "PhonePe", "Paytm", "UPI", "Card", "Cash"];
 const ALL_WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const CUSTOMER_APP_PALETTES = ["sand", "sage", "slate", "rosewood"];
+const ADMIN_ROLES = ["owner", "ops", "finance"];
 const paymentConfig = {
   brandName: "",
   useBrandLogo: false,
@@ -119,6 +120,11 @@ const outletUsers = [
   }
 ];
 const outletSessions = new Map();
+const adminUsers = [];
+const adminSessions = new Map();
+const adminInviteTokens = new Map();
+const adminResetTokens = new Map();
+const adminEmailOutbox = [];
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -183,6 +189,175 @@ function getOutletSession(req) {
     return null;
   }
   return { token, ...session };
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeAdminRole(value) {
+  const role = String(value || "").trim().toLowerCase();
+  return ADMIN_ROLES.includes(role) ? role : "owner";
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function hashPassword(password) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(String(password), salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, storedHash) {
+  const [salt, hash] = String(storedHash || "").split(":");
+  if (!salt || !hash) return false;
+  const computed = scryptSync(String(password), salt, 64).toString("hex");
+  const hashBuffer = Buffer.from(hash, "hex");
+  const computedBuffer = Buffer.from(computed, "hex");
+  if (hashBuffer.length !== computedBuffer.length) return false;
+  return timingSafeEqual(hashBuffer, computedBuffer);
+}
+
+function sanitizeAdminUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name || "",
+    companyName: user.companyName || "",
+    role: normalizeAdminRole(user.role),
+    status: user.status || "pending",
+    createdAt: user.createdAt
+  };
+}
+
+function hasAdminPermission(role, permission) {
+  const normalizedRole = normalizeAdminRole(role);
+  if (normalizedRole === "owner") return true;
+  const map = {
+    ops: new Set([
+      "summary:read",
+      "analytics:read",
+      "publish:write",
+      "stores:write",
+      "stores:read",
+      "outlet-users:read",
+      "outlet-users:write",
+      "menu:write"
+    ]),
+    finance: new Set([
+      "summary:read",
+      "analytics:read",
+      "payment-config:write",
+      "publish:write"
+    ])
+  };
+  return Boolean(map[normalizedRole]?.has(permission));
+}
+
+function requireAdminPermission(req, res, permission) {
+  const role = req?.adminSession?.role || "owner";
+  if (hasAdminPermission(role, permission)) return true;
+  sendJson(res, 403, { error: `Access denied for role "${role}" on ${permission}.` });
+  return false;
+}
+
+function getAdminSession(req) {
+  const authHeader = String(req.headers.authorization || "").trim();
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
+  const token = authHeader.slice(7).trim();
+  if (!token) return null;
+  const session = adminSessions.get(token);
+  if (!session) return null;
+  if (session.expiresAt <= Date.now()) {
+    adminSessions.delete(token);
+    return null;
+  }
+  return { token, ...session };
+}
+
+function issueInviteToken(userId) {
+  const token = randomUUID().replace(/-/g, "");
+  adminInviteTokens.set(token, {
+    userId,
+    expiresAt: Date.now() + 1000 * 60 * 60 * 24
+  });
+  return token;
+}
+
+function issueResetToken(userId) {
+  const token = randomUUID().replace(/-/g, "");
+  adminResetTokens.set(token, {
+    userId,
+    expiresAt: Date.now() + 1000 * 60 * 30
+  });
+  return token;
+}
+
+function getBaseUrl(req) {
+  const host = String(req.headers.host || `localhost:${PORT}`).trim();
+  const protoHeader = String(req.headers["x-forwarded-proto"] || "").trim().toLowerCase();
+  const protocol = protoHeader === "https" ? "https" : "http";
+  return `${protocol}://${host}`;
+}
+
+function queueAdminEmail(email) {
+  adminEmailOutbox.unshift({
+    ...email,
+    id: randomUUID(),
+    queuedAt: new Date().toISOString()
+  });
+  if (adminEmailOutbox.length > 30) {
+    adminEmailOutbox.length = 30;
+  }
+  console.log(`[admin-email] to=${email.to} subject="${email.subject}"`);
+  console.log(`[admin-email] preview=${email.previewUrl}`);
+}
+
+async function deliverAdminEmail(email) {
+  const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
+  const resendFrom = String(process.env.RESEND_FROM_EMAIL || "").trim();
+  if (!resendApiKey || !resendFrom) {
+    queueAdminEmail(email);
+    return "preview";
+  }
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: resendFrom,
+        to: [email.to],
+        subject: email.subject,
+        html: email.html || `<p>${email.subject}</p><p><a href="${email.previewUrl}">${email.previewUrl}</a></p>`
+      })
+    });
+    if (!response.ok) {
+      queueAdminEmail(email);
+      return "preview";
+    }
+    return "email";
+  } catch {
+    queueAdminEmail(email);
+    return "preview";
+  }
+}
+
+async function sendAdminInvite(user, req) {
+  const inviteToken = issueInviteToken(user.id);
+  user.invitedAt = new Date().toISOString();
+  const inviteLink = `${getBaseUrl(req)}/admin?inviteToken=${inviteToken}`;
+  const delivery = await deliverAdminEmail({
+    to: user.email,
+    subject: "Grab And Go Admin Invite",
+    html: `<p>Your Grab And Go admin account is ready.</p><p>Click to activate: <a href="${inviteLink}">${inviteLink}</a></p>`,
+    previewUrl: inviteLink
+  });
+  return { delivery, inviteLink: delivery === "preview" ? inviteLink : "" };
 }
 
 function sendJson(res, statusCode, payload) {
@@ -620,6 +795,218 @@ function handleApi(req, res, parsedUrl) {
     });
   }
 
+  if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/signup") {
+    return readBody(req)
+      .then(async (body) => {
+        const email = normalizeEmail(body?.email);
+        const name = String(body?.name || "").trim();
+        const companyName = String(body?.companyName || "").trim();
+        // Public signup always provisions an owner account.
+        const role = "owner";
+        if (!email || !companyName) {
+          return sendJson(res, 400, { error: "email and companyName are required." });
+        }
+        if (!isValidEmail(email)) {
+          return sendJson(res, 400, { error: "Enter a valid email." });
+        }
+
+        let user = adminUsers.find((entry) => entry.email === email);
+        if (user && user.passwordHash) {
+          return sendJson(res, 409, { error: "Admin account already active. Please login." });
+        }
+        if (!user) {
+          user = {
+            id: randomUUID(),
+            email,
+            name,
+            companyName,
+            role,
+            status: "pending",
+            passwordHash: "",
+            createdAt: new Date().toISOString(),
+            invitedAt: "",
+            activatedAt: ""
+          };
+          adminUsers.push(user);
+        } else {
+          user.name = name || user.name;
+          user.companyName = companyName || user.companyName;
+          user.role = role || user.role || "owner";
+          user.status = "pending";
+        }
+
+        const { delivery, inviteLink } = await sendAdminInvite(user, req);
+
+        return sendJson(res, 201, {
+          message: "Signup received. Invite link sent to email.",
+          delivery,
+          inviteLink,
+          admin: sanitizeAdminUser(user)
+        });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/complete-invite") {
+    return readBody(req)
+      .then((body) => {
+        const token = String(body?.token || "").trim();
+        const password = String(body?.password || "").trim();
+        const name = String(body?.name || "").trim();
+        if (!token || !password) {
+          return sendJson(res, 400, { error: "token and password are required." });
+        }
+        if (password.length < 8) {
+          return sendJson(res, 400, { error: "Password must be at least 8 characters." });
+        }
+        const invite = adminInviteTokens.get(token);
+        if (!invite || invite.expiresAt <= Date.now()) {
+          adminInviteTokens.delete(token);
+          return sendJson(res, 400, { error: "Invite token is invalid or expired." });
+        }
+        const user = adminUsers.find((entry) => entry.id === invite.userId);
+        if (!user) {
+          adminInviteTokens.delete(token);
+          return sendJson(res, 404, { error: "Admin user not found." });
+        }
+        user.passwordHash = hashPassword(password);
+        user.status = "active";
+        if (name) user.name = name;
+        user.activatedAt = new Date().toISOString();
+        adminInviteTokens.delete(token);
+        return sendJson(res, 200, { message: "Admin account activated. Please login.", admin: sanitizeAdminUser(user) });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/login") {
+    return readBody(req)
+      .then((body) => {
+        const email = normalizeEmail(body?.email);
+        const password = String(body?.password || "").trim();
+        if (!email || !password) {
+          return sendJson(res, 400, { error: "email and password are required." });
+        }
+        const user = adminUsers.find((entry) => entry.email === email);
+        if (!user || !user.passwordHash || user.status !== "active" || !verifyPassword(password, user.passwordHash)) {
+          return sendJson(res, 401, { error: "Invalid admin credentials." });
+        }
+        const token = randomUUID();
+        adminSessions.set(token, {
+          userId: user.id,
+          email: user.email,
+          role: normalizeAdminRole(user.role),
+          expiresAt: Date.now() + 1000 * 60 * 60 * 12
+        });
+        return sendJson(res, 200, {
+          token,
+          admin: sanitizeAdminUser(user),
+          permissions: {
+            canManageStores: hasAdminPermission(user.role, "stores:write"),
+            canManagePayments: hasAdminPermission(user.role, "payment-config:write"),
+            canManageOutletUsers: hasAdminPermission(user.role, "outlet-users:write")
+          }
+        });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "GET" && parsedUrl.pathname === "/api/admin/auth/me") {
+    const session = getAdminSession(req);
+    if (!session) {
+      return sendJson(res, 401, { error: "Unauthorized admin session." });
+    }
+    const user = adminUsers.find((entry) => entry.id === session.userId);
+    if (!user || user.status !== "active") {
+      return sendJson(res, 401, { error: "Admin account unavailable." });
+    }
+    return sendJson(res, 200, {
+      admin: sanitizeAdminUser(user),
+      permissions: {
+        canManageStores: hasAdminPermission(user.role, "stores:write"),
+        canManagePayments: hasAdminPermission(user.role, "payment-config:write"),
+        canManageOutletUsers: hasAdminPermission(user.role, "outlet-users:write")
+      }
+    });
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/logout") {
+    const session = getAdminSession(req);
+    if (session) {
+      adminSessions.delete(session.token);
+    }
+    return sendJson(res, 200, { message: "Logged out." });
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/forgot-password") {
+    return readBody(req)
+      .then(async (body) => {
+        const email = normalizeEmail(body?.email);
+        if (!email || !isValidEmail(email)) {
+          return sendJson(res, 400, { error: "Enter a valid email." });
+        }
+        const user = adminUsers.find((entry) => entry.email === email && entry.status === "active");
+        if (!user) {
+          return sendJson(res, 200, { message: "If this email is registered, reset instructions were sent." });
+        }
+        const resetToken = issueResetToken(user.id);
+        const resetLink = `${getBaseUrl(req)}/admin?resetToken=${resetToken}`;
+        const delivery = await deliverAdminEmail({
+          to: user.email,
+          subject: "Grab And Go Admin Password Reset",
+          html: `<p>Reset your Grab And Go admin password.</p><p>Reset link: <a href="${resetLink}">${resetLink}</a></p>`,
+          previewUrl: resetLink
+        });
+        return sendJson(res, 200, {
+          message: "If this email is registered, reset instructions were sent.",
+          delivery,
+          resetLink: delivery === "preview" ? resetLink : ""
+        });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/reset-password") {
+    return readBody(req)
+      .then((body) => {
+        const token = String(body?.token || "").trim();
+        const password = String(body?.password || "").trim();
+        if (!token || !password) {
+          return sendJson(res, 400, { error: "token and password are required." });
+        }
+        if (password.length < 8) {
+          return sendJson(res, 400, { error: "Password must be at least 8 characters." });
+        }
+        const reset = adminResetTokens.get(token);
+        if (!reset || reset.expiresAt <= Date.now()) {
+          adminResetTokens.delete(token);
+          return sendJson(res, 400, { error: "Reset token is invalid or expired." });
+        }
+        const user = adminUsers.find((entry) => entry.id === reset.userId && entry.status === "active");
+        if (!user) {
+          adminResetTokens.delete(token);
+          return sendJson(res, 404, { error: "Admin user not found." });
+        }
+        user.passwordHash = hashPassword(password);
+        adminResetTokens.delete(token);
+        return sendJson(res, 200, { message: "Password updated. Please login." });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (parsedUrl.pathname.startsWith("/api/admin/") && !parsedUrl.pathname.startsWith("/api/admin/auth/")) {
+    const adminSession = getAdminSession(req);
+    if (!adminSession) {
+      return sendJson(res, 401, { error: "Unauthorized admin session." });
+    }
+    const user = adminUsers.find((entry) => entry.id === adminSession.userId);
+    if (!user || user.status !== "active") {
+      return sendJson(res, 401, { error: "Admin account unavailable." });
+    }
+    adminSession.role = normalizeAdminRole(user.role);
+    req.adminSession = adminSession;
+  }
+
   if (req.method === "POST" && parsedUrl.pathname === "/api/verify-pickup") {
     return readBody(req)
       .then((body) => {
@@ -643,7 +1030,136 @@ function handleApi(req, res, parsedUrl) {
       .catch((err) => sendJson(res, 400, { error: err.message }));
   }
 
+  if (req.method === "GET" && parsedUrl.pathname === "/api/admin/users") {
+    if (!requireAdminPermission(req, res, "admin-users:read")) return;
+    return sendJson(res, 200, {
+      users: adminUsers.map((user) => sanitizeAdminUser(user))
+    });
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/admin/users") {
+    if (!requireAdminPermission(req, res, "admin-users:write")) return;
+    return readBody(req)
+      .then(async (body) => {
+        const email = normalizeEmail(body?.email);
+        const name = String(body?.name || "").trim();
+        const companyName = String(body?.companyName || "").trim();
+        const role = normalizeAdminRole(body?.role);
+        if (!email || !companyName) {
+          return sendJson(res, 400, { error: "email and companyName are required." });
+        }
+        if (!isValidEmail(email)) {
+          return sendJson(res, 400, { error: "Enter a valid email." });
+        }
+
+        let user = adminUsers.find((entry) => entry.email === email);
+        if (!user) {
+          user = {
+            id: randomUUID(),
+            email,
+            name,
+            companyName,
+            role,
+            status: "pending",
+            passwordHash: "",
+            createdAt: new Date().toISOString(),
+            invitedAt: "",
+            activatedAt: ""
+          };
+          adminUsers.push(user);
+        } else {
+          user.name = name || user.name;
+          user.companyName = companyName || user.companyName;
+          user.role = role || user.role || "owner";
+          if (user.status === "disabled") user.status = "pending";
+        }
+
+        const { delivery, inviteLink } = await sendAdminInvite(user, req);
+        return sendJson(res, 201, {
+          message: "Admin user saved and invite sent.",
+          delivery,
+          inviteLink,
+          user: sanitizeAdminUser(user)
+        });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname.startsWith("/api/admin/users/") && parsedUrl.pathname.endsWith("/resend-invite")) {
+    if (!requireAdminPermission(req, res, "admin-users:write")) return;
+    const id = decodeURIComponent(parsedUrl.pathname.replace("/api/admin/users/", "").replace("/resend-invite", "")).trim();
+    const user = adminUsers.find((entry) => entry.id === id);
+    if (!user) return sendJson(res, 404, { error: "Admin user not found." });
+    return sendAdminInvite(user, req)
+      .then(({ delivery, inviteLink }) =>
+        sendJson(res, 200, {
+          message: "Invite resent.",
+          delivery,
+          inviteLink,
+          user: sanitizeAdminUser(user)
+        })
+      )
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "PUT" && parsedUrl.pathname.startsWith("/api/admin/users/")) {
+    if (!requireAdminPermission(req, res, "admin-users:write")) return;
+    const id = decodeURIComponent(parsedUrl.pathname.replace("/api/admin/users/", "")).trim();
+    if (!id || id.includes("/")) return sendJson(res, 404, { error: "Admin user not found." });
+    return readBody(req)
+      .then((body) => {
+        const user = adminUsers.find((entry) => entry.id === id);
+        if (!user) return sendJson(res, 404, { error: "Admin user not found." });
+
+        const nextRole = body?.role !== undefined ? normalizeAdminRole(body.role) : user.role;
+        const nextStatus = body?.status !== undefined ? String(body.status || "").trim().toLowerCase() : user.status;
+        const validStatus = ["pending", "active", "disabled"].includes(nextStatus) ? nextStatus : user.status;
+
+        const activeOwnerCount = adminUsers.filter((entry) => normalizeAdminRole(entry.role) === "owner" && entry.status !== "disabled").length;
+        const userIsOwner = normalizeAdminRole(user.role) === "owner" && user.status !== "disabled";
+        const ownerWouldBeRemoved = userIsOwner && (nextRole !== "owner" || validStatus === "disabled");
+        if (ownerWouldBeRemoved && activeOwnerCount <= 1) {
+          return sendJson(res, 400, { error: "At least one owner account must remain active." });
+        }
+
+        user.name = body?.name !== undefined ? String(body.name || "").trim() : user.name;
+        user.companyName = body?.companyName !== undefined ? String(body.companyName || "").trim() : user.companyName;
+        user.role = nextRole;
+        user.status = validStatus;
+        if (validStatus === "disabled") {
+          for (const [token, session] of adminSessions.entries()) {
+            if (session.userId === user.id) adminSessions.delete(token);
+          }
+        }
+
+        return sendJson(res, 200, { message: "Admin user updated.", user: sanitizeAdminUser(user) });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "DELETE" && parsedUrl.pathname.startsWith("/api/admin/users/")) {
+    if (!requireAdminPermission(req, res, "admin-users:write")) return;
+    const id = decodeURIComponent(parsedUrl.pathname.replace("/api/admin/users/", "")).trim();
+    if (!id || id.includes("/")) return sendJson(res, 404, { error: "Admin user not found." });
+    if (req.adminSession?.userId === id) {
+      return sendJson(res, 400, { error: "You cannot delete your own admin account." });
+    }
+    const idx = adminUsers.findIndex((entry) => entry.id === id);
+    if (idx < 0) return sendJson(res, 404, { error: "Admin user not found." });
+    const user = adminUsers[idx];
+    const activeOwnerCount = adminUsers.filter((entry) => normalizeAdminRole(entry.role) === "owner" && entry.status !== "disabled").length;
+    if (normalizeAdminRole(user.role) === "owner" && user.status !== "disabled" && activeOwnerCount <= 1) {
+      return sendJson(res, 400, { error: "At least one owner account must remain active." });
+    }
+    adminUsers.splice(idx, 1);
+    for (const [token, session] of adminSessions.entries()) {
+      if (session.userId === user.id) adminSessions.delete(token);
+    }
+    return sendJson(res, 200, { message: "Admin user deleted.", user: sanitizeAdminUser(user) });
+  }
+
   if (req.method === "GET" && parsedUrl.pathname === "/api/admin/summary") {
+    if (!requireAdminPermission(req, res, "summary:read")) return;
     const range = parseDateRange(parsedUrl.searchParams);
     if (range.error) {
       return sendJson(res, 400, { error: range.error });
@@ -669,6 +1185,7 @@ function handleApi(req, res, parsedUrl) {
   }
 
   if (req.method === "POST" && parsedUrl.pathname === "/api/admin/publish") {
+    if (!requireAdminPermission(req, res, "publish:write")) return;
     const publishStatus = publishDraftState();
     return sendJson(res, 200, {
       message: "Changes published to customer app.",
@@ -677,6 +1194,7 @@ function handleApi(req, res, parsedUrl) {
   }
 
   if (req.method === "POST" && parsedUrl.pathname === "/api/admin/menu") {
+    if (!requireAdminPermission(req, res, "menu:write")) return;
     return readBody(req)
       .then((body) => {
         const result = validateAndNormalizeMenu(body.menu);
@@ -690,6 +1208,7 @@ function handleApi(req, res, parsedUrl) {
   }
 
   if (req.method === "POST" && parsedUrl.pathname === "/api/admin/stores") {
+    if (!requireAdminPermission(req, res, "stores:write")) return;
     return readBody(req)
       .then((body) => {
         const normalized = normalizeStoreInput(body);
@@ -705,6 +1224,7 @@ function handleApi(req, res, parsedUrl) {
   }
 
   if (req.method === "PUT" && parsedUrl.pathname.startsWith("/api/admin/stores/")) {
+    if (!requireAdminPermission(req, res, "stores:write")) return;
     return readBody(req)
       .then((body) => {
         const storeId = decodeURIComponent(parsedUrl.pathname.replace("/api/admin/stores/", "")).trim();
@@ -723,6 +1243,7 @@ function handleApi(req, res, parsedUrl) {
   }
 
   if (req.method === "DELETE" && parsedUrl.pathname.startsWith("/api/admin/stores/")) {
+    if (!requireAdminPermission(req, res, "stores:write")) return;
     const storeId = decodeURIComponent(parsedUrl.pathname.replace("/api/admin/stores/", "")).trim();
     const storeIndex = stores.findIndex((entry) => entry.id === storeId);
     if (storeIndex < 0) {
@@ -738,10 +1259,12 @@ function handleApi(req, res, parsedUrl) {
   }
 
   if (req.method === "GET" && parsedUrl.pathname === "/api/admin/outlet-users") {
+    if (!requireAdminPermission(req, res, "outlet-users:read")) return;
     return sendJson(res, 200, { outletUsers: outletUsers.map((user) => sanitizeOutletUser(user)) });
   }
 
   if (req.method === "POST" && parsedUrl.pathname === "/api/admin/outlet-users") {
+    if (!requireAdminPermission(req, res, "outlet-users:write")) return;
     return readBody(req)
       .then((body) => {
         const username = String(body?.username || "").trim().toLowerCase();
@@ -786,6 +1309,7 @@ function handleApi(req, res, parsedUrl) {
   }
 
   if (req.method === "GET" && parsedUrl.pathname === "/api/admin/store-performance") {
+    if (!requireAdminPermission(req, res, "analytics:read")) return;
     const storeId = (parsedUrl.searchParams.get("storeId") || "").trim();
     if (!storeId) {
       return sendJson(res, 400, { error: "storeId is required." });
@@ -806,6 +1330,7 @@ function handleApi(req, res, parsedUrl) {
   }
 
   if (req.method === "POST" && parsedUrl.pathname === "/api/admin/payment-config") {
+    if (!requireAdminPermission(req, res, "payment-config:write")) return;
     return readBody(req)
       .then((body) => {
         const hasBrandName = Object.prototype.hasOwnProperty.call(body, "brandName");
