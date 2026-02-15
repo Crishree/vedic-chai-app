@@ -34,8 +34,8 @@
 
               <div id="adminLoginForm" class="admin-login-form">
                 <div>
-                  <label for="adminUsername">Email</label>
-                  <input id="adminUsername" placeholder="name@company.com" />
+                  <label for="adminUsername">Mobile Number</label>
+                  <input id="adminUsername" placeholder="10-digit mobile" />
                 </div>
                 <div>
                   <label for="adminPin">Password</label>
@@ -59,7 +59,11 @@
                   <input id="adminSignupCompany" placeholder="Your brand/company" />
                 </div>
                 <div>
-                  <label for="adminSignupEmail">Email</label>
+                  <label for="adminSignupMobile">Mobile Number</label>
+                  <input id="adminSignupMobile" placeholder="10-digit mobile" />
+                </div>
+                <div>
+                  <label for="adminSignupEmail">Email (optional)</label>
                   <input id="adminSignupEmail" placeholder="name@company.com" />
                 </div>
                 <div>
@@ -72,6 +76,20 @@
                 </div>
                 <div class="admin-login-action-row">
                   <button id="adminSignupBtn" type="button">Create Account</button>
+                </div>
+              </div>
+
+              <div id="adminFirstLoginForm" class="admin-login-form" style="display: none">
+                <div>
+                  <label for="adminFirstLoginNewPassword">New Password</label>
+                  <input id="adminFirstLoginNewPassword" type="password" placeholder="Minimum 8 characters" />
+                </div>
+                <div>
+                  <label for="adminFirstLoginConfirmPassword">Confirm New Password</label>
+                  <input id="adminFirstLoginConfirmPassword" type="password" placeholder="Re-enter new password" />
+                </div>
+                <div class="admin-login-action-row">
+                  <button id="adminFirstLoginSaveBtn" type="button">Update Password</button>
                 </div>
               </div>
 
@@ -524,6 +542,11 @@
                       <p id="adminUserEmailHint" class="admin-inline-hint"></p>
                     </div>
                     <div>
+                      <label for="adminUserMobileInput">Mobile</label>
+                      <input id="adminUserMobileInput" placeholder="10-digit mobile" />
+                      <p id="adminUserMobileHint" class="admin-inline-hint"></p>
+                    </div>
+                    <div>
                       <label for="adminUserCompanyInput">Company</label>
                       <input id="adminUserCompanyInput" placeholder="Company name" />
                       <p id="adminUserCompanyHint" class="admin-inline-hint"></p>
@@ -545,6 +568,7 @@
                       <thead>
                         <tr>
                           <th>Name</th>
+                          <th>Mobile</th>
                           <th>Email</th>
                           <th>Role</th>
                           <th>Status</th>
@@ -570,6 +594,16 @@
                     <label for="adminUserEditNameInput">Name</label>
                     <input id="adminUserEditNameInput" placeholder="Admin name" />
                     <p id="adminUserEditNameHint" class="admin-inline-hint"></p>
+                  </div>
+                  <div>
+                    <label for="adminUserEditMobileInput">Mobile</label>
+                    <input id="adminUserEditMobileInput" placeholder="10-digit mobile" />
+                    <p id="adminUserEditMobileHint" class="admin-inline-hint"></p>
+                  </div>
+                  <div>
+                    <label for="adminUserEditEmailInput">Email</label>
+                    <input id="adminUserEditEmailInput" placeholder="name@company.com" />
+                    <p id="adminUserEditEmailHint" class="admin-inline-hint"></p>
                   </div>
                   <div>
                     <label for="adminUserEditRoleInput">Role</label>
@@ -601,6 +635,6 @@
     </main>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="/admin.js?v=admin-users-20260215-3"></script>
+    <script src="/admin.js?v=admin-users-20260215-5"></script>
   </body>
 </html>

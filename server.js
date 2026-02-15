@@ -124,6 +124,7 @@ const adminUsers = [];
 const adminSessions = new Map();
 const adminInviteTokens = new Map();
 const adminResetTokens = new Map();
+const adminFirstLoginTokens = new Map();
 const adminEmailOutbox = [];
 
 function deepClone(value) {
@@ -195,6 +196,18 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeMobile(value) {
+  const digits = String(value || "").replace(/\D+/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return digits;
+  if (digits.length > 10) return digits.slice(-10);
+  return digits;
+}
+
+function isValidMobile(mobile) {
+  return /^\d{10}$/.test(String(mobile || "").trim());
+}
+
 function normalizeAdminRole(value) {
   const role = String(value || "").trim().toLowerCase();
   return ADMIN_ROLES.includes(role) ? role : "owner";
@@ -210,6 +223,11 @@ function hashPassword(password) {
   return `${salt}:${hash}`;
 }
 
+function generateTemporaryPassword() {
+  const chunk = randomBytes(6).toString("base64url").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
+  return `Vc@${chunk}9`;
+}
+
 function verifyPassword(password, storedHash) {
   const [salt, hash] = String(storedHash || "").split(":");
   if (!salt || !hash) return false;
@@ -223,10 +241,12 @@ function verifyPassword(password, storedHash) {
 function sanitizeAdminUser(user) {
   return {
     id: user.id,
+    mobile: user.mobile || "",
     email: user.email,
     name: user.name || "",
     companyName: user.companyName || "",
     role: normalizeAdminRole(user.role),
+    mustChangePassword: Boolean(user.mustChangePassword),
     status: user.status || "pending",
     createdAt: user.createdAt
   };
@@ -315,6 +335,18 @@ function queueAdminEmail(email) {
   console.log(`[admin-email] preview=${email.previewUrl}`);
 }
 
+function queueAdminWhatsAppLog(targetMobile, message) {
+  console.log(`[admin-whatsapp] to=${targetMobile}`);
+  console.log(`[admin-whatsapp] preview=${message}`);
+}
+
+function toE164Mobile(mobile, defaultCountryCode = "+91") {
+  const normalizedMobile = normalizeMobile(mobile);
+  const normalizedCc = String(defaultCountryCode || "+91").replace(/[^\d+]/g, "") || "+91";
+  if (!normalizedMobile) return "";
+  return `${normalizedCc}${normalizedMobile}`;
+}
+
 async function deliverAdminEmail(email) {
   const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
   const resendFrom = String(process.env.RESEND_FROM_EMAIL || "").trim();
@@ -358,6 +390,60 @@ async function sendAdminInvite(user, req) {
     previewUrl: inviteLink
   });
   return { delivery, inviteLink: delivery === "preview" ? inviteLink : "" };
+}
+
+async function sendAdminCredentials(user, req, subjectPrefix = "Admin Login Credentials") {
+  const tempPassword = generateTemporaryPassword();
+  user.passwordHash = hashPassword(tempPassword);
+  user.mustChangePassword = true;
+  user.status = user.status === "disabled" ? "disabled" : "active";
+  const loginId = user.mobile || user.email || "";
+  const messageText = `Grab And Go ${subjectPrefix}\nLogin ID: ${loginId}\nTemporary Password: ${tempPassword}\nPlease change password after first login.`;
+  const twilioSid = String(process.env.TWILIO_ACCOUNT_SID || "").trim();
+  const twilioToken = String(process.env.TWILIO_AUTH_TOKEN || "").trim();
+  const twilioFrom = String(process.env.TWILIO_WHATSAPP_FROM || "").trim();
+  const defaultCountryCode = String(process.env.ADMIN_DEFAULT_COUNTRY_CODE || "+91").trim();
+  const toMobileE164 = toE164Mobile(user.mobile, defaultCountryCode);
+
+  let delivery = "preview";
+  if (twilioSid && twilioToken && twilioFrom && toMobileE164) {
+    try {
+      const params = new URLSearchParams();
+      params.set("From", `whatsapp:${twilioFrom}`);
+      params.set("To", `whatsapp:${toMobileE164}`);
+      params.set("Body", messageText);
+      const twilioResponse = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${twilioSid}:${twilioToken}`).toString("base64")}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: params.toString()
+      });
+      if (twilioResponse.ok) {
+        delivery = "whatsapp";
+      }
+    } catch {
+      // Ignore and fallback below.
+    }
+  }
+
+  if (delivery !== "whatsapp" && user.email) {
+    delivery = await deliverAdminEmail({
+      to: user.email || "",
+      subject: `Grab And Go ${subjectPrefix}`,
+      html: `<p>Your account is ready.</p><p>Login ID: <b>${loginId}</b></p><p>Temporary Password: <b>${tempPassword}</b></p><p>Please change password after first login.</p>`,
+      previewUrl: `${getBaseUrl(req)}/admin`
+    });
+  }
+  if (delivery === "preview") {
+    queueAdminWhatsAppLog(toMobileE164 || user.mobile || "unknown", messageText);
+  }
+  return {
+    delivery,
+    loginId,
+    temporaryPassword: delivery === "preview" ? tempPassword : ""
+  };
 }
 
 function sendJson(res, statusCode, payload) {
@@ -798,49 +884,55 @@ function handleApi(req, res, parsedUrl) {
   if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/signup") {
     return readBody(req)
       .then(async (body) => {
+        const mobile = normalizeMobile(body?.mobile);
         const email = normalizeEmail(body?.email);
         const name = String(body?.name || "").trim();
         const companyName = String(body?.companyName || "").trim();
         // Public signup always provisions an owner account.
         const role = "owner";
-        if (!email || !companyName) {
-          return sendJson(res, 400, { error: "email and companyName are required." });
+        if (!mobile || !companyName) {
+          return sendJson(res, 400, { error: "mobile and companyName are required." });
         }
-        if (!isValidEmail(email)) {
+        if (!isValidMobile(mobile)) {
+          return sendJson(res, 400, { error: "Enter a valid 10-digit mobile number." });
+        }
+        if (email && !isValidEmail(email)) {
           return sendJson(res, 400, { error: "Enter a valid email." });
         }
 
-        let user = adminUsers.find((entry) => entry.email === email);
-        if (user && user.passwordHash) {
-          return sendJson(res, 409, { error: "Admin account already active. Please login." });
-        }
+        let user = adminUsers.find((entry) => entry.mobile === mobile);
         if (!user) {
           user = {
             id: randomUUID(),
+            mobile,
             email,
             name,
             companyName,
             role,
-            status: "pending",
+            status: "active",
             passwordHash: "",
+            mustChangePassword: true,
             createdAt: new Date().toISOString(),
             invitedAt: "",
             activatedAt: ""
           };
           adminUsers.push(user);
         } else {
+          user.mobile = mobile;
           user.name = name || user.name;
+          user.email = email || user.email;
           user.companyName = companyName || user.companyName;
           user.role = role || user.role || "owner";
-          user.status = "pending";
+          user.status = user.status === "disabled" ? "disabled" : "active";
         }
 
-        const { delivery, inviteLink } = await sendAdminInvite(user, req);
+        const { delivery, loginId, temporaryPassword } = await sendAdminCredentials(user, req, "Signup Credentials");
 
         return sendJson(res, 201, {
-          message: "Signup received. Invite link sent to email.",
+          message: "Signup successful. Login credentials generated.",
           delivery,
-          inviteLink,
+          loginId,
+          temporaryPassword,
           admin: sanitizeAdminUser(user)
         });
       })
@@ -870,6 +962,7 @@ function handleApi(req, res, parsedUrl) {
           return sendJson(res, 404, { error: "Admin user not found." });
         }
         user.passwordHash = hashPassword(password);
+        user.mustChangePassword = false;
         user.status = "active";
         if (name) user.name = name;
         user.activatedAt = new Date().toISOString();
@@ -882,14 +975,31 @@ function handleApi(req, res, parsedUrl) {
   if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/login") {
     return readBody(req)
       .then((body) => {
-        const email = normalizeEmail(body?.email);
+        const rawLogin = String(body?.mobile || body?.loginId || body?.email || "").trim();
+        const email = normalizeEmail(rawLogin);
+        const mobile = normalizeMobile(rawLogin);
         const password = String(body?.password || "").trim();
-        if (!email || !password) {
-          return sendJson(res, 400, { error: "email and password are required." });
+        if (!rawLogin || !password) {
+          return sendJson(res, 400, { error: "mobile/loginId and password are required." });
         }
-        const user = adminUsers.find((entry) => entry.email === email);
+        const user = rawLogin.includes("@")
+          ? adminUsers.find((entry) => normalizeEmail(entry.email) === email)
+          : adminUsers.find((entry) => normalizeMobile(entry.mobile) === mobile);
         if (!user || !user.passwordHash || user.status !== "active" || !verifyPassword(password, user.passwordHash)) {
           return sendJson(res, 401, { error: "Invalid admin credentials." });
+        }
+        if (user.mustChangePassword) {
+          const firstLoginToken = randomUUID().replace(/-/g, "");
+          adminFirstLoginTokens.set(firstLoginToken, {
+            userId: user.id,
+            expiresAt: Date.now() + 1000 * 60 * 15
+          });
+          return sendJson(res, 200, {
+            mustChangePassword: true,
+            firstLoginToken,
+            admin: sanitizeAdminUser(user),
+            message: "Password change required before dashboard access."
+          });
         }
         const token = randomUUID();
         adminSessions.set(token, {
@@ -900,6 +1010,52 @@ function handleApi(req, res, parsedUrl) {
         });
         return sendJson(res, 200, {
           token,
+          admin: sanitizeAdminUser(user),
+          permissions: {
+            canManageStores: hasAdminPermission(user.role, "stores:write"),
+            canManagePayments: hasAdminPermission(user.role, "payment-config:write"),
+            canManageOutletUsers: hasAdminPermission(user.role, "outlet-users:write")
+          }
+        });
+      })
+      .catch((err) => sendJson(res, 400, { error: err.message }));
+  }
+
+  if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/change-password-first-login") {
+    return readBody(req)
+      .then((body) => {
+        const token = String(body?.firstLoginToken || "").trim();
+        const newPassword = String(body?.newPassword || "").trim();
+        if (!token || !newPassword) {
+          return sendJson(res, 400, { error: "firstLoginToken and newPassword are required." });
+        }
+        if (newPassword.length < 8) {
+          return sendJson(res, 400, { error: "Password must be at least 8 characters." });
+        }
+        const session = adminFirstLoginTokens.get(token);
+        if (!session || session.expiresAt <= Date.now()) {
+          adminFirstLoginTokens.delete(token);
+          return sendJson(res, 400, { error: "First-login token is invalid or expired." });
+        }
+        const user = adminUsers.find((entry) => entry.id === session.userId && entry.status === "active");
+        if (!user) {
+          adminFirstLoginTokens.delete(token);
+          return sendJson(res, 404, { error: "Admin user not found." });
+        }
+        user.passwordHash = hashPassword(newPassword);
+        user.mustChangePassword = false;
+        user.activatedAt = user.activatedAt || new Date().toISOString();
+        adminFirstLoginTokens.delete(token);
+
+        const authToken = randomUUID();
+        adminSessions.set(authToken, {
+          userId: user.id,
+          email: user.email,
+          role: normalizeAdminRole(user.role),
+          expiresAt: Date.now() + 1000 * 60 * 60 * 12
+        });
+        return sendJson(res, 200, {
+          token: authToken,
           admin: sanitizeAdminUser(user),
           permissions: {
             canManageStores: hasAdminPermission(user.role, "stores:write"),
@@ -941,26 +1097,22 @@ function handleApi(req, res, parsedUrl) {
   if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/forgot-password") {
     return readBody(req)
       .then(async (body) => {
-        const email = normalizeEmail(body?.email);
-        if (!email || !isValidEmail(email)) {
-          return sendJson(res, 400, { error: "Enter a valid email." });
+        const rawLogin = String(body?.mobile || body?.loginId || body?.email || "").trim();
+        if (!rawLogin) {
+          return sendJson(res, 400, { error: "Enter your mobile/loginId." });
         }
-        const user = adminUsers.find((entry) => entry.email === email && entry.status === "active");
+        const user = rawLogin.includes("@")
+          ? adminUsers.find((entry) => normalizeEmail(entry.email) === normalizeEmail(rawLogin) && entry.status === "active")
+          : adminUsers.find((entry) => normalizeMobile(entry.mobile) === normalizeMobile(rawLogin) && entry.status === "active");
         if (!user) {
-          return sendJson(res, 200, { message: "If this email is registered, reset instructions were sent." });
+          return sendJson(res, 200, { message: "If this login is registered, credentials were sent." });
         }
-        const resetToken = issueResetToken(user.id);
-        const resetLink = `${getBaseUrl(req)}/admin?resetToken=${resetToken}`;
-        const delivery = await deliverAdminEmail({
-          to: user.email,
-          subject: "Grab And Go Admin Password Reset",
-          html: `<p>Reset your Grab And Go admin password.</p><p>Reset link: <a href="${resetLink}">${resetLink}</a></p>`,
-          previewUrl: resetLink
-        });
+        const { delivery, loginId, temporaryPassword } = await sendAdminCredentials(user, req, "Reset Credentials");
         return sendJson(res, 200, {
-          message: "If this email is registered, reset instructions were sent.",
+          message: "If this login is registered, credentials were sent.",
           delivery,
-          resetLink: delivery === "preview" ? resetLink : ""
+          loginId,
+          temporaryPassword
         });
       })
       .catch((err) => sendJson(res, 400, { error: err.message }));
@@ -988,6 +1140,7 @@ function handleApi(req, res, parsedUrl) {
           return sendJson(res, 404, { error: "Admin user not found." });
         }
         user.passwordHash = hashPassword(password);
+        user.mustChangePassword = false;
         adminResetTokens.delete(token);
         return sendJson(res, 200, { message: "Password updated. Please login." });
       })
@@ -1041,44 +1194,53 @@ function handleApi(req, res, parsedUrl) {
     if (!requireAdminPermission(req, res, "admin-users:write")) return;
     return readBody(req)
       .then(async (body) => {
+        const mobile = normalizeMobile(body?.mobile);
         const email = normalizeEmail(body?.email);
         const name = String(body?.name || "").trim();
         const companyName = String(body?.companyName || "").trim();
         const role = normalizeAdminRole(body?.role);
-        if (!email || !companyName) {
-          return sendJson(res, 400, { error: "email and companyName are required." });
+        if (!mobile || !companyName) {
+          return sendJson(res, 400, { error: "mobile and companyName are required." });
         }
-        if (!isValidEmail(email)) {
+        if (!isValidMobile(mobile)) {
+          return sendJson(res, 400, { error: "Enter a valid 10-digit mobile number." });
+        }
+        if (email && !isValidEmail(email)) {
           return sendJson(res, 400, { error: "Enter a valid email." });
         }
 
-        let user = adminUsers.find((entry) => entry.email === email);
+        let user = adminUsers.find((entry) => normalizeMobile(entry.mobile) === mobile);
         if (!user) {
           user = {
             id: randomUUID(),
+            mobile,
             email,
             name,
             companyName,
             role,
-            status: "pending",
+            status: "active",
             passwordHash: "",
+            mustChangePassword: true,
             createdAt: new Date().toISOString(),
             invitedAt: "",
             activatedAt: ""
           };
           adminUsers.push(user);
         } else {
+          user.mobile = mobile;
           user.name = name || user.name;
+          user.email = email || user.email;
           user.companyName = companyName || user.companyName;
           user.role = role || user.role || "owner";
-          if (user.status === "disabled") user.status = "pending";
+          if (user.status === "disabled") user.status = "active";
         }
 
-        const { delivery, inviteLink } = await sendAdminInvite(user, req);
+        const { delivery, loginId, temporaryPassword } = await sendAdminCredentials(user, req, "Admin Credentials");
         return sendJson(res, 201, {
-          message: "Admin user saved and invite sent.",
+          message: "Admin user saved and credentials sent.",
           delivery,
-          inviteLink,
+          loginId,
+          temporaryPassword,
           user: sanitizeAdminUser(user)
         });
       })
@@ -1090,12 +1252,13 @@ function handleApi(req, res, parsedUrl) {
     const id = decodeURIComponent(parsedUrl.pathname.replace("/api/admin/users/", "").replace("/resend-invite", "")).trim();
     const user = adminUsers.find((entry) => entry.id === id);
     if (!user) return sendJson(res, 404, { error: "Admin user not found." });
-    return sendAdminInvite(user, req)
-      .then(({ delivery, inviteLink }) =>
+    return sendAdminCredentials(user, req, "Admin Credentials")
+      .then(({ delivery, loginId, temporaryPassword }) =>
         sendJson(res, 200, {
-          message: "Invite resent.",
+          message: "Credentials resent.",
           delivery,
-          inviteLink,
+          loginId,
+          temporaryPassword,
           user: sanitizeAdminUser(user)
         })
       )
@@ -1123,6 +1286,24 @@ function handleApi(req, res, parsedUrl) {
         }
 
         user.name = body?.name !== undefined ? String(body.name || "").trim() : user.name;
+        if (body?.mobile !== undefined) {
+          const nextMobile = normalizeMobile(body.mobile);
+          if (!isValidMobile(nextMobile)) {
+            return sendJson(res, 400, { error: "Enter a valid 10-digit mobile number." });
+          }
+          const exists = adminUsers.find((entry) => entry.id !== user.id && normalizeMobile(entry.mobile) === nextMobile);
+          if (exists) {
+            return sendJson(res, 400, { error: "Mobile number already used by another admin user." });
+          }
+          user.mobile = nextMobile;
+        }
+        if (body?.email !== undefined) {
+          const nextEmail = normalizeEmail(body.email);
+          if (nextEmail && !isValidEmail(nextEmail)) {
+            return sendJson(res, 400, { error: "Enter a valid email." });
+          }
+          user.email = nextEmail;
+        }
         user.companyName = body?.companyName !== undefined ? String(body.companyName || "").trim() : user.companyName;
         user.role = nextRole;
         user.status = validStatus;

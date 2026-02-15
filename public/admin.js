@@ -35,12 +35,17 @@ const adminAuthLoginTab = document.getElementById("adminAuthLoginTab");
 const adminAuthSignupTab = document.getElementById("adminAuthSignupTab");
 const adminLoginForm = document.getElementById("adminLoginForm");
 const adminSignupForm = document.getElementById("adminSignupForm");
+const adminFirstLoginForm = document.getElementById("adminFirstLoginForm");
 const adminInviteSetupForm = document.getElementById("adminInviteSetupForm");
 const adminSignupNameInput = document.getElementById("adminSignupName");
 const adminSignupCompanyInput = document.getElementById("adminSignupCompany");
+const adminSignupMobileInput = document.getElementById("adminSignupMobile");
 const adminSignupEmailInput = document.getElementById("adminSignupEmail");
 const adminSignupRoleSelect = document.getElementById("adminSignupRole");
 const adminSignupBtn = document.getElementById("adminSignupBtn");
+const adminFirstLoginNewPasswordInput = document.getElementById("adminFirstLoginNewPassword");
+const adminFirstLoginConfirmPasswordInput = document.getElementById("adminFirstLoginConfirmPassword");
+const adminFirstLoginSaveBtn = document.getElementById("adminFirstLoginSaveBtn");
 const adminInviteNameInput = document.getElementById("adminInviteName");
 const adminInvitePasswordInput = document.getElementById("adminInvitePassword");
 const adminInviteConfirmPasswordInput = document.getElementById("adminInviteConfirmPassword");
@@ -118,10 +123,12 @@ const outletCredStatus = document.getElementById("outletCredStatus");
 const outletCredTableBody = document.getElementById("outletCredTableBody");
 const adminUserNameInput = document.getElementById("adminUserNameInput");
 const adminUserEmailInput = document.getElementById("adminUserEmailInput");
+const adminUserMobileInput = document.getElementById("adminUserMobileInput");
 const adminUserCompanyInput = document.getElementById("adminUserCompanyInput");
 const adminUserRoleInput = document.getElementById("adminUserRoleInput");
 const adminUserNameHint = document.getElementById("adminUserNameHint");
 const adminUserEmailHint = document.getElementById("adminUserEmailHint");
+const adminUserMobileHint = document.getElementById("adminUserMobileHint");
 const adminUserCompanyHint = document.getElementById("adminUserCompanyHint");
 const createAdminUserBtn = document.getElementById("createAdminUserBtn");
 const adminUsersBody = document.getElementById("adminUsersBody");
@@ -129,9 +136,13 @@ const adminUsersStatus = document.getElementById("adminUsersStatus");
 const adminUserEditModal = document.getElementById("adminUserEditModal");
 const adminUserEditCloseBtn = document.getElementById("adminUserEditCloseBtn");
 const adminUserEditNameInput = document.getElementById("adminUserEditNameInput");
+const adminUserEditMobileInput = document.getElementById("adminUserEditMobileInput");
+const adminUserEditEmailInput = document.getElementById("adminUserEditEmailInput");
 const adminUserEditRoleInput = document.getElementById("adminUserEditRoleInput");
 const adminUserEditStatusInput = document.getElementById("adminUserEditStatusInput");
 const adminUserEditNameHint = document.getElementById("adminUserEditNameHint");
+const adminUserEditMobileHint = document.getElementById("adminUserEditMobileHint");
+const adminUserEditEmailHint = document.getElementById("adminUserEditEmailHint");
 const adminUserEditStatusHint = document.getElementById("adminUserEditStatusHint");
 const adminUserEditSaveBtn = document.getElementById("adminUserEditSaveBtn");
 const adminUserEditStatus = document.getElementById("adminUserEditStatus");
@@ -160,6 +171,7 @@ let adminAuthToken = "";
 let adminProfile = null;
 let adminUsersData = [];
 let editingAdminUserId = "";
+let pendingFirstLoginToken = "";
 let pendingInviteToken = "";
 let pendingResetToken = "";
 let charts = {
@@ -363,8 +375,20 @@ function validateEmailFormat(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
+function normalizeMobile(value) {
+  const digits = String(value || "").replace(/\D+/g, "");
+  if (!digits) return "";
+  if (digits.length > 10) return digits.slice(-10);
+  return digits;
+}
+
+function validateMobileFormat(value) {
+  return /^\d{10}$/.test(normalizeMobile(value));
+}
+
 function validateCreateAdminUserFields() {
   const name = String(adminUserNameInput?.value || "").trim();
+  const mobile = normalizeMobile(adminUserMobileInput?.value || "");
   const email = String(adminUserEmailInput?.value || "").trim().toLowerCase();
   const company = String(adminUserCompanyInput?.value || "").trim();
   let valid = true;
@@ -375,14 +399,22 @@ function validateCreateAdminUserFields() {
   } else {
     setInlineHint(adminUserNameHint, "Looks good.", "success");
   }
-  if (!email) {
-    setInlineHint(adminUserEmailHint, "Email is required.", "error");
+  if (!mobile) {
+    setInlineHint(adminUserMobileHint, "Mobile is required.", "error");
     valid = false;
-  } else if (!validateEmailFormat(email)) {
-    setInlineHint(adminUserEmailHint, "Enter a valid email address.", "error");
+  } else if (!validateMobileFormat(mobile)) {
+    setInlineHint(adminUserMobileHint, "Enter a valid 10-digit mobile number.", "error");
     valid = false;
   } else {
+    setInlineHint(adminUserMobileHint, "Valid mobile number.", "success");
+  }
+  if (email && !validateEmailFormat(email)) {
+    setInlineHint(adminUserEmailHint, "Enter a valid email address.", "error");
+    valid = false;
+  } else if (email) {
     setInlineHint(adminUserEmailHint, "Valid email format.", "success");
+  } else {
+    setInlineHint(adminUserEmailHint, "Optional.", "");
   }
   if (!company) {
     setInlineHint(adminUserCompanyHint, "Company is required.", "error");
@@ -397,6 +429,8 @@ function closeAdminUserEditModal() {
   editingAdminUserId = "";
   if (adminUserEditModal) adminUserEditModal.style.display = "none";
   setInlineHint(adminUserEditNameHint, "", "");
+  setInlineHint(adminUserEditMobileHint, "", "");
+  setInlineHint(adminUserEditEmailHint, "", "");
   setInlineHint(adminUserEditStatusHint, "", "");
   showAdminUserEditStatus("", "success");
 }
@@ -405,9 +439,13 @@ function openAdminUserEditModal(user) {
   if (!user || !adminUserEditModal) return;
   editingAdminUserId = user.id;
   if (adminUserEditNameInput) adminUserEditNameInput.value = String(user.name || "");
+  if (adminUserEditMobileInput) adminUserEditMobileInput.value = String(user.mobile || "");
+  if (adminUserEditEmailInput) adminUserEditEmailInput.value = String(user.email || "");
   if (adminUserEditRoleInput) adminUserEditRoleInput.value = String(user.role || "owner");
   if (adminUserEditStatusInput) adminUserEditStatusInput.value = String(user.status || "pending");
   setInlineHint(adminUserEditNameHint, "", "");
+  setInlineHint(adminUserEditMobileHint, "", "");
+  setInlineHint(adminUserEditEmailHint, "", "");
   setInlineHint(adminUserEditStatusHint, "", "");
   showAdminUserEditStatus("", "success");
   adminUserEditModal.style.display = "grid";
@@ -417,6 +455,8 @@ async function saveAdminUserEdits() {
   const id = String(editingAdminUserId || "").trim();
   if (!id) return;
   const name = String(adminUserEditNameInput?.value || "").trim();
+  const mobile = normalizeMobile(adminUserEditMobileInput?.value || "");
+  const email = String(adminUserEditEmailInput?.value || "").trim().toLowerCase();
   const role = String(adminUserEditRoleInput?.value || "owner").trim().toLowerCase();
   const status = String(adminUserEditStatusInput?.value || "active").trim().toLowerCase();
   let valid = true;
@@ -432,13 +472,27 @@ async function saveAdminUserEdits() {
   } else {
     setInlineHint(adminUserEditStatusHint, "", "");
   }
+  if (!mobile || !validateMobileFormat(mobile)) {
+    setInlineHint(adminUserEditMobileHint, "Enter a valid 10-digit mobile number.", "error");
+    valid = false;
+  } else {
+    setInlineHint(adminUserEditMobileHint, "Valid mobile number.", "success");
+  }
+  if (email && !validateEmailFormat(email)) {
+    setInlineHint(adminUserEditEmailHint, "Enter a valid email address.", "error");
+    valid = false;
+  } else if (email) {
+    setInlineHint(adminUserEditEmailHint, "Valid email format.", "success");
+  } else {
+    setInlineHint(adminUserEditEmailHint, "Optional.", "");
+  }
   if (!valid) return;
   if (adminUserEditSaveBtn) adminUserEditSaveBtn.disabled = true;
   try {
     await fetchAdmin(`/api/admin/users/${encodeURIComponent(id)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, role, status })
+      body: JSON.stringify({ name, mobile, email, role, status })
     });
     showAdminUsersStatus("Admin user updated.", "success");
     closeAdminUserEditModal();
@@ -483,11 +537,23 @@ function setAuthMode(mode) {
   const isLogin = mode === "login";
   if (adminLoginForm) adminLoginForm.style.display = isLogin ? "grid" : "none";
   if (adminSignupForm) adminSignupForm.style.display = isLogin ? "none" : "grid";
+  if (adminFirstLoginForm) adminFirstLoginForm.style.display = "none";
   if (adminInviteSetupForm && !pendingInviteToken && !pendingResetToken) {
     adminInviteSetupForm.style.display = "none";
   }
   if (adminAuthLoginTab) adminAuthLoginTab.classList.toggle("admin-auth-tab-active", isLogin);
   if (adminAuthSignupTab) adminAuthSignupTab.classList.toggle("admin-auth-tab-active", !isLogin);
+}
+
+function setFirstLoginMode(token) {
+  pendingFirstLoginToken = String(token || "").trim();
+  if (adminLoginForm) adminLoginForm.style.display = "none";
+  if (adminSignupForm) adminSignupForm.style.display = "none";
+  if (adminInviteSetupForm) adminInviteSetupForm.style.display = "none";
+  if (adminFirstLoginForm) adminFirstLoginForm.style.display = "grid";
+  if (adminAuthLoginTab) adminAuthLoginTab.classList.remove("admin-auth-tab-active");
+  if (adminAuthSignupTab) adminAuthSignupTab.classList.remove("admin-auth-tab-active");
+  showLoginStatus("Temporary password accepted. Set a new password to continue.", "success");
 }
 
 function setInviteMode(token, resetMode = false) {
@@ -902,11 +968,11 @@ function renderAdminUsersTable() {
   if (!adminUsersBody) return;
   const role = String(adminProfile?.role || "owner").toLowerCase();
   if (role !== "owner") {
-    adminUsersBody.innerHTML = `<tr><td colspan="5">Only owner can manage admin users.</td></tr>`;
+    adminUsersBody.innerHTML = `<tr><td colspan="6">Only owner can manage admin users.</td></tr>`;
     return;
   }
   if (!Array.isArray(adminUsersData) || adminUsersData.length === 0) {
-    adminUsersBody.innerHTML = `<tr><td colspan="5">No admin users yet.</td></tr>`;
+    adminUsersBody.innerHTML = `<tr><td colspan="6">No admin users yet.</td></tr>`;
     return;
   }
   adminUsersBody.innerHTML = adminUsersData
@@ -918,6 +984,7 @@ function renderAdminUsersTable() {
       return `
         <tr>
           <td>${displayName}</td>
+          <td>${user.mobile || "-"}</td>
           <td>${user.email || "-"}</td>
           <td>${roleLabel}</td>
           <td>${statusLabel}</td>
@@ -949,8 +1016,9 @@ function renderAdminUsersTable() {
       if (!id) return;
       try {
         const data = await fetchAdmin(`/api/admin/users/${encodeURIComponent(id)}/resend-invite`, { method: "POST" });
-        const extra = data?.inviteLink ? ` Invite preview: ${data.inviteLink}` : "";
-        showAdminUsersStatus(`Invite resent.${extra}`, "success");
+        const deliveryText = data?.delivery === "whatsapp" ? " Sent on WhatsApp." : "";
+        const extra = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
+        showAdminUsersStatus(`Credentials resent. Login ID: ${data?.loginId || "-"}.${deliveryText}${extra}`, "success");
       } catch (err) {
         showAdminUsersStatus(err.message, "error");
       }
@@ -1663,6 +1731,9 @@ async function logout(showMessage = true) {
   adminUsernameInput.value = "";
   if (adminInvitePasswordInput) adminInvitePasswordInput.value = "";
   if (adminInviteConfirmPasswordInput) adminInviteConfirmPasswordInput.value = "";
+  if (adminFirstLoginNewPasswordInput) adminFirstLoginNewPasswordInput.value = "";
+  if (adminFirstLoginConfirmPasswordInput) adminFirstLoginConfirmPasswordInput.value = "";
+  pendingFirstLoginToken = "";
   pendingInviteToken = "";
   pendingResetToken = "";
   if (adminRoleBadge) adminRoleBadge.textContent = "";
@@ -1673,22 +1744,31 @@ async function logout(showMessage = true) {
 }
 
 async function login() {
-  const email = adminUsernameInput.value.trim().toLowerCase();
+  const mobile = normalizeMobile(adminUsernameInput.value);
   const password = adminPinInput.value.trim();
-  if (!email || !password) {
-    showLoginStatus("Enter email and password.", "error");
+  if (!mobile || !password) {
+    showLoginStatus("Enter mobile number and password.", "error");
+    return;
+  }
+  if (!validateMobileFormat(mobile)) {
+    showLoginStatus("Enter a valid 10-digit mobile number.", "error");
     return;
   }
   try {
     const data = await fetch("/api/admin/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ mobile, password })
     }).then(async (res) => {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Login failed.");
       return json;
     });
+    if (data.mustChangePassword && data.firstLoginToken) {
+      setFirstLoginMode(data.firstLoginToken);
+      adminPinInput.value = "";
+      return;
+    }
     setAdminAuthToken(data.token || "");
     adminProfile = data.admin || null;
     adminLoginCard.style.display = "none";
@@ -1704,28 +1784,80 @@ async function login() {
 }
 
 async function signupAdmin() {
+  const mobile = normalizeMobile(adminSignupMobileInput?.value || "");
   const email = String(adminSignupEmailInput?.value || "").trim().toLowerCase();
   const name = String(adminSignupNameInput?.value || "").trim();
   const companyName = String(adminSignupCompanyInput?.value || "").trim();
   const role = String(adminSignupRoleSelect?.value || "owner").trim().toLowerCase();
-  if (!email || !companyName) {
-    showLoginStatus("Company name and email are required.", "error");
+  if (!mobile || !companyName) {
+    showLoginStatus("Company name and mobile are required.", "error");
+    return;
+  }
+  if (!validateMobileFormat(mobile)) {
+    showLoginStatus("Enter a valid 10-digit mobile number.", "error");
+    return;
+  }
+  if (email && !validateEmailFormat(email)) {
+    showLoginStatus("Enter a valid email.", "error");
     return;
   }
   try {
     const data = await fetch("/api/admin/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, name, companyName, role })
+      body: JSON.stringify({ mobile, email, name, companyName, role })
     }).then(async (res) => {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Signup failed.");
       return json;
     });
-    const previewText = data?.inviteLink ? ` Invite preview: ${data.inviteLink}` : "";
-    showLoginStatus(`Signup created. Invite sent to ${email}.${previewText}`, "success");
+    const deliveryText = data?.delivery === "whatsapp" ? " Credentials sent on WhatsApp." : "";
+    const passText = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
+    showLoginStatus(`Signup created. Login with mobile ${mobile}.${deliveryText}${passText}`, "success");
     setAuthMode("login");
-    adminUsernameInput.value = email;
+    adminUsernameInput.value = mobile;
+  } catch (err) {
+    showLoginStatus(err.message, "error");
+  }
+}
+
+async function completeFirstLoginPasswordChange() {
+  const newPassword = String(adminFirstLoginNewPasswordInput?.value || "").trim();
+  const confirm = String(adminFirstLoginConfirmPasswordInput?.value || "").trim();
+  if (!pendingFirstLoginToken) {
+    showLoginStatus("First-login session expired. Please login again with temporary password.", "error");
+    setAuthMode("login");
+    return;
+  }
+  if (!newPassword || newPassword.length < 8) {
+    showLoginStatus("New password must be at least 8 characters.", "error");
+    return;
+  }
+  if (newPassword !== confirm) {
+    showLoginStatus("New password and confirm password do not match.", "error");
+    return;
+  }
+  try {
+    const data = await fetch("/api/admin/auth/change-password-first-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ firstLoginToken: pendingFirstLoginToken, newPassword })
+    }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Could not update password.");
+      return json;
+    });
+    pendingFirstLoginToken = "";
+    if (adminFirstLoginNewPasswordInput) adminFirstLoginNewPasswordInput.value = "";
+    if (adminFirstLoginConfirmPasswordInput) adminFirstLoginConfirmPasswordInput.value = "";
+    setAdminAuthToken(data.token || "");
+    adminProfile = data.admin || null;
+    adminLoginCard.style.display = "none";
+    adminContent.style.display = "block";
+    applyRoleAccess();
+    showPanel("home");
+    showLoginStatus("", "success");
+    startAutoRefresh();
   } catch (err) {
     showLoginStatus(err.message, "error");
   }
@@ -1733,6 +1865,7 @@ async function signupAdmin() {
 
 async function createAdminUser() {
   const name = String(adminUserNameInput?.value || "").trim();
+  const mobile = normalizeMobile(adminUserMobileInput?.value || "");
   const email = String(adminUserEmailInput?.value || "").trim().toLowerCase();
   const companyName = String(adminUserCompanyInput?.value || "").trim();
   const role = String(adminUserRoleInput?.value || "owner").trim().toLowerCase();
@@ -1745,14 +1878,20 @@ async function createAdminUser() {
     const data = await fetchAdmin("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, companyName, role })
+      body: JSON.stringify({ name, mobile, email, companyName, role })
     });
-    const extra = data?.inviteLink ? ` Invite preview: ${data.inviteLink}` : "";
-    showAdminUsersStatus(`Admin user saved.${extra}`, "success");
+    const deliveryText = data?.delivery === "whatsapp" ? " Sent on WhatsApp." : "";
+    const extra = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
+    showAdminUsersStatus(`Admin user saved. Login ID: ${data?.loginId || mobile}.${deliveryText}${extra}`, "success");
     if (adminUserNameInput) adminUserNameInput.value = "";
     if (adminUserEmailInput) adminUserEmailInput.value = "";
+    if (adminUserMobileInput) adminUserMobileInput.value = "";
     if (adminUserCompanyInput) adminUserCompanyInput.value = "";
     if (adminUserRoleInput) adminUserRoleInput.value = "owner";
+    setInlineHint(adminUserNameHint, "", "");
+    setInlineHint(adminUserMobileHint, "", "");
+    setInlineHint(adminUserEmailHint, "", "");
+    setInlineHint(adminUserCompanyHint, "", "");
     await refreshAdminUsers();
   } catch (err) {
     showAdminUsersStatus(err.message, "error");
@@ -1803,23 +1942,28 @@ async function completeInviteOrReset() {
 }
 
 async function forgotPassword() {
-  const email = adminUsernameInput.value.trim().toLowerCase();
-  if (!email) {
-    showLoginStatus("Enter your admin email first, then click Forgot password.", "error");
+  const mobile = normalizeMobile(adminUsernameInput.value);
+  if (!mobile) {
+    showLoginStatus("Enter your admin mobile first, then click Forgot password.", "error");
+    return;
+  }
+  if (!validateMobileFormat(mobile)) {
+    showLoginStatus("Enter a valid 10-digit mobile number.", "error");
     return;
   }
   try {
     const data = await fetch("/api/admin/auth/forgot-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ mobile })
     }).then(async (res) => {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Could not process request.");
       return json;
     });
-    const previewText = data?.resetLink ? ` Reset preview: ${data.resetLink}` : "";
-    showLoginStatus(`Password reset instructions sent if account exists.${previewText}`, "success");
+    const deliveryText = data?.delivery === "whatsapp" ? " Sent on WhatsApp." : "";
+    const passText = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
+    showLoginStatus(`If this login exists, credentials were sent.${deliveryText}${passText}`, "success");
   } catch (err) {
     showLoginStatus(err.message, "error");
   }
@@ -1883,6 +2027,7 @@ if (adminForgotBtn) adminForgotBtn.addEventListener("click", forgotPassword);
 if (adminAuthLoginTab) adminAuthLoginTab.addEventListener("click", () => setAuthMode("login"));
 if (adminAuthSignupTab) adminAuthSignupTab.addEventListener("click", () => setAuthMode("signup"));
 if (adminCompleteInviteBtn) adminCompleteInviteBtn.addEventListener("click", completeInviteOrReset);
+if (adminFirstLoginSaveBtn) adminFirstLoginSaveBtn.addEventListener("click", completeFirstLoginPasswordChange);
 
 if (existingStoreModeBtn) existingStoreModeBtn.addEventListener("click", () => setStoreSetupMode("existing"));
 if (newStoreModeBtn) newStoreModeBtn.addEventListener("click", () => setStoreSetupMode("new"));
@@ -2027,11 +2172,22 @@ if (adminSignupEmailInput) {
     if (event.key === "Enter") signupAdmin();
   });
 }
+if (adminSignupMobileInput) {
+  adminSignupMobileInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") signupAdmin();
+  });
+}
 if (adminUserEmailInput) {
   adminUserEmailInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") createAdminUser();
   });
   adminUserEmailInput.addEventListener("blur", validateCreateAdminUserFields);
+}
+if (adminUserMobileInput) {
+  adminUserMobileInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") createAdminUser();
+  });
+  adminUserMobileInput.addEventListener("blur", validateCreateAdminUserFields);
 }
 if (adminUserNameInput) {
   adminUserNameInput.addEventListener("blur", validateCreateAdminUserFields);
@@ -2053,6 +2209,28 @@ if (adminUserEditStatusInput) {
     const value = String(adminUserEditStatusInput.value || "").trim().toLowerCase();
     const ok = ["active", "pending", "disabled"].includes(value);
     setInlineHint(adminUserEditStatusHint, ok ? "" : "Choose active, pending, or disabled.", ok ? "" : "error");
+  });
+}
+if (adminUserEditMobileInput) {
+  adminUserEditMobileInput.addEventListener("blur", () => {
+    const ok = validateMobileFormat(adminUserEditMobileInput.value || "");
+    setInlineHint(adminUserEditMobileHint, ok ? "Valid mobile number." : "Enter a valid 10-digit mobile number.", ok ? "success" : "error");
+  });
+}
+if (adminUserEditEmailInput) {
+  adminUserEditEmailInput.addEventListener("blur", () => {
+    const value = String(adminUserEditEmailInput.value || "").trim();
+    if (!value) {
+      setInlineHint(adminUserEditEmailHint, "Optional.", "");
+      return;
+    }
+    const ok = validateEmailFormat(value);
+    setInlineHint(adminUserEditEmailHint, ok ? "Valid email format." : "Enter a valid email address.", ok ? "success" : "error");
+  });
+}
+if (adminFirstLoginConfirmPasswordInput) {
+  adminFirstLoginConfirmPasswordInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") completeFirstLoginPasswordChange();
   });
 }
 document.addEventListener("keydown", (event) => {
