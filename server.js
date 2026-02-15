@@ -122,7 +122,6 @@ const outletUsers = [
 const outletSessions = new Map();
 const adminUsers = [];
 const adminSessions = new Map();
-const adminInviteTokens = new Map();
 const adminResetTokens = new Map();
 const adminFirstLoginTokens = new Map();
 const adminEmailOutbox = [];
@@ -297,15 +296,6 @@ function getAdminSession(req) {
   return { token, ...session };
 }
 
-function issueInviteToken(userId) {
-  const token = randomUUID().replace(/-/g, "");
-  adminInviteTokens.set(token, {
-    userId,
-    expiresAt: Date.now() + 1000 * 60 * 60 * 24
-  });
-  return token;
-}
-
 function issueResetToken(userId) {
   const token = randomUUID().replace(/-/g, "");
   adminResetTokens.set(token, {
@@ -333,18 +323,6 @@ function queueAdminEmail(email) {
   }
   console.log(`[admin-email] to=${email.to} subject="${email.subject}"`);
   console.log(`[admin-email] preview=${email.previewUrl}`);
-}
-
-function queueAdminSmsLog(targetMobile, message) {
-  console.log(`[admin-sms] to=${targetMobile}`);
-  console.log(`[admin-sms] preview=${message}`);
-}
-
-function toE164Mobile(mobile, defaultCountryCode = "+91") {
-  const normalizedMobile = normalizeMobile(mobile);
-  const normalizedCc = String(defaultCountryCode || "+91").replace(/[^\d+]/g, "") || "+91";
-  if (!normalizedMobile) return "";
-  return `${normalizedCc}${normalizedMobile}`;
 }
 
 async function deliverAdminEmail(email) {
@@ -379,65 +357,20 @@ async function deliverAdminEmail(email) {
   }
 }
 
-async function sendAdminInvite(user, req) {
-  const inviteToken = issueInviteToken(user.id);
-  user.invitedAt = new Date().toISOString();
-  const inviteLink = `${getBaseUrl(req)}/admin?inviteToken=${inviteToken}`;
-  const delivery = await deliverAdminEmail({
-    to: user.email,
-    subject: "Grab And Go Admin Invite",
-    html: `<p>Your Grab And Go admin account is ready.</p><p>Click to activate: <a href="${inviteLink}">${inviteLink}</a></p>`,
-    previewUrl: inviteLink
-  });
-  return { delivery, inviteLink: delivery === "preview" ? inviteLink : "" };
-}
-
 async function sendAdminCredentials(user, req, subjectPrefix = "Admin Login Credentials") {
   const tempPassword = generateTemporaryPassword();
   user.passwordHash = hashPassword(tempPassword);
   user.mustChangePassword = true;
   user.status = user.status === "disabled" ? "disabled" : "active";
   const loginId = user.mobile || user.email || "";
-  const messageText = `Grab And Go ${subjectPrefix}\nLogin ID: ${loginId}\nTemporary Password: ${tempPassword}\nPlease change password after first login.`;
-  const twilioSid = String(process.env.TWILIO_ACCOUNT_SID || "").trim();
-  const twilioToken = String(process.env.TWILIO_AUTH_TOKEN || "").trim();
-  const twilioFrom = String(process.env.TWILIO_SMS_FROM || process.env.TWILIO_FROM || "").trim();
-  const defaultCountryCode = String(process.env.ADMIN_DEFAULT_COUNTRY_CODE || "+91").trim();
-  const toMobileE164 = toE164Mobile(user.mobile, defaultCountryCode);
-
   let delivery = "preview";
-  if (twilioSid && twilioToken && twilioFrom && toMobileE164) {
-    try {
-      const params = new URLSearchParams();
-      params.set("From", twilioFrom);
-      params.set("To", toMobileE164);
-      params.set("Body", messageText);
-      const twilioResponse = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${twilioSid}:${twilioToken}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: params.toString()
-      });
-      if (twilioResponse.ok) {
-        delivery = "sms";
-      }
-    } catch {
-      // Ignore and fallback below.
-    }
-  }
-
-  if (delivery !== "sms" && user.email) {
+  if (user.email) {
     delivery = await deliverAdminEmail({
       to: user.email || "",
       subject: `Grab And Go ${subjectPrefix}`,
       html: `<p>Your account is ready.</p><p>Login ID: <b>${loginId}</b></p><p>Temporary Password: <b>${tempPassword}</b></p><p>Please change password after first login.</p>`,
       previewUrl: `${getBaseUrl(req)}/admin`
     });
-  }
-  if (delivery === "preview") {
-    queueAdminSmsLog(toMobileE164 || user.mobile || "unknown", messageText);
   }
   return {
     delivery,
@@ -890,13 +823,13 @@ function handleApi(req, res, parsedUrl) {
         const companyName = String(body?.companyName || "").trim();
         // Public signup always provisions an owner account.
         const role = "owner";
-        if (!mobile || !companyName) {
-          return sendJson(res, 400, { error: "mobile and companyName are required." });
+        if (!mobile || !email || !companyName) {
+          return sendJson(res, 400, { error: "mobile, email and companyName are required." });
         }
         if (!isValidMobile(mobile)) {
           return sendJson(res, 400, { error: "Enter a valid 10-digit mobile number." });
         }
-        if (email && !isValidEmail(email)) {
+        if (!isValidEmail(email)) {
           return sendJson(res, 400, { error: "Enter a valid email." });
         }
 
@@ -935,39 +868,6 @@ function handleApi(req, res, parsedUrl) {
           temporaryPassword,
           admin: sanitizeAdminUser(user)
         });
-      })
-      .catch((err) => sendJson(res, 400, { error: err.message }));
-  }
-
-  if (req.method === "POST" && parsedUrl.pathname === "/api/admin/auth/complete-invite") {
-    return readBody(req)
-      .then((body) => {
-        const token = String(body?.token || "").trim();
-        const password = String(body?.password || "").trim();
-        const name = String(body?.name || "").trim();
-        if (!token || !password) {
-          return sendJson(res, 400, { error: "token and password are required." });
-        }
-        if (password.length < 8) {
-          return sendJson(res, 400, { error: "Password must be at least 8 characters." });
-        }
-        const invite = adminInviteTokens.get(token);
-        if (!invite || invite.expiresAt <= Date.now()) {
-          adminInviteTokens.delete(token);
-          return sendJson(res, 400, { error: "Invite token is invalid or expired." });
-        }
-        const user = adminUsers.find((entry) => entry.id === invite.userId);
-        if (!user) {
-          adminInviteTokens.delete(token);
-          return sendJson(res, 404, { error: "Admin user not found." });
-        }
-        user.passwordHash = hashPassword(password);
-        user.mustChangePassword = false;
-        user.status = "active";
-        if (name) user.name = name;
-        user.activatedAt = new Date().toISOString();
-        adminInviteTokens.delete(token);
-        return sendJson(res, 200, { message: "Admin account activated. Please login.", admin: sanitizeAdminUser(user) });
       })
       .catch((err) => sendJson(res, 400, { error: err.message }));
   }
@@ -1199,13 +1099,13 @@ function handleApi(req, res, parsedUrl) {
         const name = String(body?.name || "").trim();
         const companyName = String(body?.companyName || "").trim();
         const role = normalizeAdminRole(body?.role);
-        if (!mobile || !companyName) {
-          return sendJson(res, 400, { error: "mobile and companyName are required." });
+        if (!mobile || !email || !companyName) {
+          return sendJson(res, 400, { error: "mobile, email and companyName are required." });
         }
         if (!isValidMobile(mobile)) {
           return sendJson(res, 400, { error: "Enter a valid 10-digit mobile number." });
         }
-        if (email && !isValidEmail(email)) {
+        if (!isValidEmail(email)) {
           return sendJson(res, 400, { error: "Enter a valid email." });
         }
 

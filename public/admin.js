@@ -406,7 +406,8 @@ function validateCreateAdminUserFields() {
   } else if (email) {
     setInlineHint(adminUserEmailHint, "Valid email format.", "success");
   } else {
-    setInlineHint(adminUserEmailHint, "Optional.", "");
+    setInlineHint(adminUserEmailHint, "Email is required.", "error");
+    valid = false;
   }
   if (!company) {
     setInlineHint(adminUserCompanyHint, "Company is required.", "error");
@@ -990,7 +991,7 @@ function renderAdminUsersTable() {
       if (!id) return;
       try {
         const data = await fetchAdmin(`/api/admin/users/${encodeURIComponent(id)}/resend-invite`, { method: "POST" });
-        const deliveryText = data?.delivery === "sms" ? " Sent by SMS." : "";
+        const deliveryText = data?.delivery === "email" ? " Sent by email." : "";
         const extra = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
         showAdminUsersStatus(`Credentials resent. Login ID: ${data?.loginId || "-"}.${deliveryText}${extra}`, "success");
       } catch (err) {
@@ -1767,7 +1768,7 @@ async function signupAdmin() {
     showLoginStatus("Enter a valid 10-digit mobile number.", "error");
     return;
   }
-  if (email && !validateEmailFormat(email)) {
+  if (!email || !validateEmailFormat(email)) {
     showLoginStatus("Enter a valid email.", "error");
     return;
   }
@@ -1781,7 +1782,7 @@ async function signupAdmin() {
       if (!res.ok) throw new Error(json.error || "Signup failed.");
       return json;
     });
-    const deliveryText = data?.delivery === "sms" ? " Credentials sent by SMS." : "";
+    const deliveryText = data?.delivery === "email" ? " Credentials sent by email." : "";
     const passText = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
     showLoginStatus(`Signup created. Login with mobile ${mobile}.${deliveryText}${passText}`, "success");
     setAuthMode("login");
@@ -1850,7 +1851,7 @@ async function createAdminUser() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, mobile, email, companyName, role })
     });
-    const deliveryText = data?.delivery === "sms" ? " Sent by SMS." : "";
+    const deliveryText = data?.delivery === "email" ? " Sent by email." : "";
     const extra = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
     showAdminUsersStatus(`Admin user saved. Login ID: ${data?.loginId || mobile}.${deliveryText}${extra}`, "success");
     if (adminUserNameInput) adminUserNameInput.value = "";
@@ -1890,7 +1891,7 @@ async function forgotPassword() {
       if (!res.ok) throw new Error(json.error || "Could not process request.");
       return json;
     });
-    const deliveryText = data?.delivery === "sms" ? " Sent by SMS." : "";
+    const deliveryText = data?.delivery === "email" ? " Sent by email." : "";
     const passText = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
     showLoginStatus(`If this login exists, credentials were sent.${deliveryText}${passText}`, "success");
   } catch (err) {
