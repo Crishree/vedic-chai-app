@@ -36,20 +36,14 @@ const adminAuthSignupTab = document.getElementById("adminAuthSignupTab");
 const adminLoginForm = document.getElementById("adminLoginForm");
 const adminSignupForm = document.getElementById("adminSignupForm");
 const adminFirstLoginForm = document.getElementById("adminFirstLoginForm");
-const adminInviteSetupForm = document.getElementById("adminInviteSetupForm");
 const adminSignupNameInput = document.getElementById("adminSignupName");
 const adminSignupCompanyInput = document.getElementById("adminSignupCompany");
 const adminSignupMobileInput = document.getElementById("adminSignupMobile");
 const adminSignupEmailInput = document.getElementById("adminSignupEmail");
-const adminSignupRoleSelect = document.getElementById("adminSignupRole");
 const adminSignupBtn = document.getElementById("adminSignupBtn");
 const adminFirstLoginNewPasswordInput = document.getElementById("adminFirstLoginNewPassword");
 const adminFirstLoginConfirmPasswordInput = document.getElementById("adminFirstLoginConfirmPassword");
 const adminFirstLoginSaveBtn = document.getElementById("adminFirstLoginSaveBtn");
-const adminInviteNameInput = document.getElementById("adminInviteName");
-const adminInvitePasswordInput = document.getElementById("adminInvitePassword");
-const adminInviteConfirmPasswordInput = document.getElementById("adminInviteConfirmPassword");
-const adminCompleteInviteBtn = document.getElementById("adminCompleteInviteBtn");
 const adminLoginStatus = document.getElementById("adminLoginStatus");
 const adminBrandHeader = document.getElementById("adminBrandHeader");
 const adminBrandHeaderFallback = document.getElementById("adminBrandHeaderFallback");
@@ -172,8 +166,6 @@ let adminProfile = null;
 let adminUsersData = [];
 let editingAdminUserId = "";
 let pendingFirstLoginToken = "";
-let pendingInviteToken = "";
-let pendingResetToken = "";
 let charts = {
   networkValueTrend: null,
   networkPaymentMix: null,
@@ -538,9 +530,6 @@ function setAuthMode(mode) {
   if (adminLoginForm) adminLoginForm.style.display = isLogin ? "grid" : "none";
   if (adminSignupForm) adminSignupForm.style.display = isLogin ? "none" : "grid";
   if (adminFirstLoginForm) adminFirstLoginForm.style.display = "none";
-  if (adminInviteSetupForm && !pendingInviteToken && !pendingResetToken) {
-    adminInviteSetupForm.style.display = "none";
-  }
   if (adminAuthLoginTab) adminAuthLoginTab.classList.toggle("admin-auth-tab-active", isLogin);
   if (adminAuthSignupTab) adminAuthSignupTab.classList.toggle("admin-auth-tab-active", !isLogin);
 }
@@ -549,25 +538,10 @@ function setFirstLoginMode(token) {
   pendingFirstLoginToken = String(token || "").trim();
   if (adminLoginForm) adminLoginForm.style.display = "none";
   if (adminSignupForm) adminSignupForm.style.display = "none";
-  if (adminInviteSetupForm) adminInviteSetupForm.style.display = "none";
   if (adminFirstLoginForm) adminFirstLoginForm.style.display = "grid";
   if (adminAuthLoginTab) adminAuthLoginTab.classList.remove("admin-auth-tab-active");
   if (adminAuthSignupTab) adminAuthSignupTab.classList.remove("admin-auth-tab-active");
   showLoginStatus("Temporary password accepted. Set a new password to continue.", "success");
-}
-
-function setInviteMode(token, resetMode = false) {
-  pendingInviteToken = resetMode ? "" : token;
-  pendingResetToken = resetMode ? token : "";
-  if (adminLoginForm) adminLoginForm.style.display = "none";
-  if (adminSignupForm) adminSignupForm.style.display = "none";
-  if (adminInviteSetupForm) adminInviteSetupForm.style.display = "grid";
-  if (adminAuthLoginTab) adminAuthLoginTab.classList.remove("admin-auth-tab-active");
-  if (adminAuthSignupTab) adminAuthSignupTab.classList.remove("admin-auth-tab-active");
-  showLoginStatus(
-    resetMode ? "Set a new password to continue." : "Complete account setup by setting your password.",
-    "success"
-  );
 }
 
 function getRolePermissions(role) {
@@ -1016,7 +990,7 @@ function renderAdminUsersTable() {
       if (!id) return;
       try {
         const data = await fetchAdmin(`/api/admin/users/${encodeURIComponent(id)}/resend-invite`, { method: "POST" });
-        const deliveryText = data?.delivery === "whatsapp" ? " Sent on WhatsApp." : "";
+        const deliveryText = data?.delivery === "sms" ? " Sent by SMS." : "";
         const extra = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
         showAdminUsersStatus(`Credentials resent. Login ID: ${data?.loginId || "-"}.${deliveryText}${extra}`, "success");
       } catch (err) {
@@ -1729,13 +1703,9 @@ async function logout(showMessage = true) {
   adminLoginCard.style.display = "block";
   adminPinInput.value = "";
   adminUsernameInput.value = "";
-  if (adminInvitePasswordInput) adminInvitePasswordInput.value = "";
-  if (adminInviteConfirmPasswordInput) adminInviteConfirmPasswordInput.value = "";
   if (adminFirstLoginNewPasswordInput) adminFirstLoginNewPasswordInput.value = "";
   if (adminFirstLoginConfirmPasswordInput) adminFirstLoginConfirmPasswordInput.value = "";
   pendingFirstLoginToken = "";
-  pendingInviteToken = "";
-  pendingResetToken = "";
   if (adminRoleBadge) adminRoleBadge.textContent = "";
   closeAdminUserEditModal();
   setAuthMode("login");
@@ -1788,7 +1758,7 @@ async function signupAdmin() {
   const email = String(adminSignupEmailInput?.value || "").trim().toLowerCase();
   const name = String(adminSignupNameInput?.value || "").trim();
   const companyName = String(adminSignupCompanyInput?.value || "").trim();
-  const role = String(adminSignupRoleSelect?.value || "owner").trim().toLowerCase();
+  const role = "owner";
   if (!mobile || !companyName) {
     showLoginStatus("Company name and mobile are required.", "error");
     return;
@@ -1811,7 +1781,7 @@ async function signupAdmin() {
       if (!res.ok) throw new Error(json.error || "Signup failed.");
       return json;
     });
-    const deliveryText = data?.delivery === "whatsapp" ? " Credentials sent on WhatsApp." : "";
+    const deliveryText = data?.delivery === "sms" ? " Credentials sent by SMS." : "";
     const passText = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
     showLoginStatus(`Signup created. Login with mobile ${mobile}.${deliveryText}${passText}`, "success");
     setAuthMode("login");
@@ -1880,7 +1850,7 @@ async function createAdminUser() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, mobile, email, companyName, role })
     });
-    const deliveryText = data?.delivery === "whatsapp" ? " Sent on WhatsApp." : "";
+    const deliveryText = data?.delivery === "sms" ? " Sent by SMS." : "";
     const extra = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
     showAdminUsersStatus(`Admin user saved. Login ID: ${data?.loginId || mobile}.${deliveryText}${extra}`, "success");
     if (adminUserNameInput) adminUserNameInput.value = "";
@@ -1897,47 +1867,6 @@ async function createAdminUser() {
     showAdminUsersStatus(err.message, "error");
   } finally {
     if (createAdminUserBtn) createAdminUserBtn.disabled = false;
-  }
-}
-
-async function completeInviteOrReset() {
-  const password = String(adminInvitePasswordInput?.value || "").trim();
-  const confirmPassword = String(adminInviteConfirmPasswordInput?.value || "").trim();
-  const name = String(adminInviteNameInput?.value || "").trim();
-  if (!password || password.length < 8) {
-    showLoginStatus("Password must be at least 8 characters.", "error");
-    return;
-  }
-  if (password !== confirmPassword) {
-    showLoginStatus("Password and confirm password do not match.", "error");
-    return;
-  }
-  const isReset = Boolean(pendingResetToken);
-  const token = isReset ? pendingResetToken : pendingInviteToken;
-  if (!token) {
-    showLoginStatus("Invite/reset token missing.", "error");
-    return;
-  }
-  try {
-    const endpoint = isReset ? "/api/admin/auth/reset-password" : "/api/admin/auth/complete-invite";
-    const payload = isReset ? { token, password } : { token, password, name };
-    const data = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    }).then(async (res) => {
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Action failed.");
-      return json;
-    });
-    showLoginStatus(data.message || "Done. Please login.", "success");
-    pendingInviteToken = "";
-    pendingResetToken = "";
-    adminInvitePasswordInput.value = "";
-    adminInviteConfirmPasswordInput.value = "";
-    setAuthMode("login");
-  } catch (err) {
-    showLoginStatus(err.message, "error");
   }
 }
 
@@ -1961,7 +1890,7 @@ async function forgotPassword() {
       if (!res.ok) throw new Error(json.error || "Could not process request.");
       return json;
     });
-    const deliveryText = data?.delivery === "whatsapp" ? " Sent on WhatsApp." : "";
+    const deliveryText = data?.delivery === "sms" ? " Sent by SMS." : "";
     const passText = data?.temporaryPassword ? ` Temporary password: ${data.temporaryPassword}` : "";
     showLoginStatus(`If this login exists, credentials were sent.${deliveryText}${passText}`, "success");
   } catch (err) {
@@ -1970,17 +1899,6 @@ async function forgotPassword() {
 }
 
 async function bootstrapAdminAuth() {
-  const params = new URLSearchParams(window.location.search);
-  const inviteToken = String(params.get("inviteToken") || "").trim();
-  const resetToken = String(params.get("resetToken") || "").trim();
-  if (inviteToken) {
-    setInviteMode(inviteToken, false);
-    return;
-  }
-  if (resetToken) {
-    setInviteMode(resetToken, true);
-    return;
-  }
   setAuthMode("login");
   const storedToken = localStorage.getItem(ADMIN_AUTH_TOKEN_KEY);
   if (!storedToken) return;
@@ -2026,7 +1944,6 @@ if (adminSignupBtn) adminSignupBtn.addEventListener("click", signupAdmin);
 if (adminForgotBtn) adminForgotBtn.addEventListener("click", forgotPassword);
 if (adminAuthLoginTab) adminAuthLoginTab.addEventListener("click", () => setAuthMode("login"));
 if (adminAuthSignupTab) adminAuthSignupTab.addEventListener("click", () => setAuthMode("signup"));
-if (adminCompleteInviteBtn) adminCompleteInviteBtn.addEventListener("click", completeInviteOrReset);
 if (adminFirstLoginSaveBtn) adminFirstLoginSaveBtn.addEventListener("click", completeFirstLoginPasswordChange);
 
 if (existingStoreModeBtn) existingStoreModeBtn.addEventListener("click", () => setStoreSetupMode("existing"));
@@ -2162,11 +2079,6 @@ resetAnalyticsRangeBtn.addEventListener("click", async () => {
 adminPinInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") login();
 });
-if (adminInviteConfirmPasswordInput) {
-  adminInviteConfirmPasswordInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") completeInviteOrReset();
-  });
-}
 if (adminSignupEmailInput) {
   adminSignupEmailInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") signupAdmin();

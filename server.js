@@ -335,9 +335,9 @@ function queueAdminEmail(email) {
   console.log(`[admin-email] preview=${email.previewUrl}`);
 }
 
-function queueAdminWhatsAppLog(targetMobile, message) {
-  console.log(`[admin-whatsapp] to=${targetMobile}`);
-  console.log(`[admin-whatsapp] preview=${message}`);
+function queueAdminSmsLog(targetMobile, message) {
+  console.log(`[admin-sms] to=${targetMobile}`);
+  console.log(`[admin-sms] preview=${message}`);
 }
 
 function toE164Mobile(mobile, defaultCountryCode = "+91") {
@@ -401,7 +401,7 @@ async function sendAdminCredentials(user, req, subjectPrefix = "Admin Login Cred
   const messageText = `Grab And Go ${subjectPrefix}\nLogin ID: ${loginId}\nTemporary Password: ${tempPassword}\nPlease change password after first login.`;
   const twilioSid = String(process.env.TWILIO_ACCOUNT_SID || "").trim();
   const twilioToken = String(process.env.TWILIO_AUTH_TOKEN || "").trim();
-  const twilioFrom = String(process.env.TWILIO_WHATSAPP_FROM || "").trim();
+  const twilioFrom = String(process.env.TWILIO_SMS_FROM || process.env.TWILIO_FROM || "").trim();
   const defaultCountryCode = String(process.env.ADMIN_DEFAULT_COUNTRY_CODE || "+91").trim();
   const toMobileE164 = toE164Mobile(user.mobile, defaultCountryCode);
 
@@ -409,8 +409,8 @@ async function sendAdminCredentials(user, req, subjectPrefix = "Admin Login Cred
   if (twilioSid && twilioToken && twilioFrom && toMobileE164) {
     try {
       const params = new URLSearchParams();
-      params.set("From", `whatsapp:${twilioFrom}`);
-      params.set("To", `whatsapp:${toMobileE164}`);
+      params.set("From", twilioFrom);
+      params.set("To", toMobileE164);
       params.set("Body", messageText);
       const twilioResponse = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {
         method: "POST",
@@ -421,14 +421,14 @@ async function sendAdminCredentials(user, req, subjectPrefix = "Admin Login Cred
         body: params.toString()
       });
       if (twilioResponse.ok) {
-        delivery = "whatsapp";
+        delivery = "sms";
       }
     } catch {
       // Ignore and fallback below.
     }
   }
 
-  if (delivery !== "whatsapp" && user.email) {
+  if (delivery !== "sms" && user.email) {
     delivery = await deliverAdminEmail({
       to: user.email || "",
       subject: `Grab And Go ${subjectPrefix}`,
@@ -437,7 +437,7 @@ async function sendAdminCredentials(user, req, subjectPrefix = "Admin Login Cred
     });
   }
   if (delivery === "preview") {
-    queueAdminWhatsAppLog(toMobileE164 || user.mobile || "unknown", messageText);
+    queueAdminSmsLog(toMobileE164 || user.mobile || "unknown", messageText);
   }
   return {
     delivery,
