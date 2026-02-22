@@ -37,88 +37,8 @@ const paymentConfig = {
 };
 
 const orders = [];
-const stores = [
-  {
-    id: "blr-koramangala",
-    name: "Vedic Chai - Koramangala",
-    address: "Koramangala, Bengaluru",
-    managerName: "Store Manager",
-    menu: MENU_ITEMS.map((item) => ({ ...item })),
-    openDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    openTime: "08:00",
-    closeTime: "22:00",
-    upiId: "vedicchai.koramangala@upi",
-    enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
-    paymentGatewayMode: "direct_upi",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "blr-indiranagar",
-    name: "Vedic Chai - Indiranagar",
-    address: "Indiranagar, Bengaluru",
-    managerName: "Store Manager",
-    menu: MENU_ITEMS.map((item) => ({ ...item })),
-    openDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    openTime: "08:00",
-    closeTime: "22:00",
-    upiId: "vedicchai.indiranagar@upi",
-    enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
-    paymentGatewayMode: "direct_upi",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "blr-hsr",
-    name: "Vedic Chai - HSR",
-    address: "HSR Layout, Bengaluru",
-    managerName: "Store Manager",
-    menu: MENU_ITEMS.map((item) => ({ ...item })),
-    openDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    openTime: "08:00",
-    closeTime: "22:00",
-    upiId: "vedicchai.hsr@upi",
-    enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
-    paymentGatewayMode: "direct_upi",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "blr-whitefield",
-    name: "Vedic Chai - Whitefield",
-    address: "Whitefield, Bengaluru",
-    managerName: "Store Manager",
-    menu: MENU_ITEMS.map((item) => ({ ...item })),
-    openDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    openTime: "08:00",
-    closeTime: "22:00",
-    upiId: "vedicchai.whitefield@upi",
-    enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
-    paymentGatewayMode: "direct_upi",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "blr-jayanagar",
-    name: "Vedic Chai - Jayanagar",
-    address: "Jayanagar, Bengaluru",
-    managerName: "Store Manager",
-    menu: MENU_ITEMS.map((item) => ({ ...item })),
-    openDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    openTime: "08:00",
-    closeTime: "22:00",
-    upiId: "vedicchai.jayanagar@upi",
-    enabledPaymentMethods: [...ALL_PAYMENT_METHODS],
-    paymentGatewayMode: "direct_upi",
-    createdAt: new Date().toISOString()
-  }
-];
-const outletUsers = [
-  {
-    id: randomUUID(),
-    username: "outlet",
-    pin: "1234",
-    storeId: "blr-koramangala",
-    displayName: "Default Outlet User",
-    createdAt: new Date().toISOString()
-  }
-];
+const stores = [];
+const outletUsers = [];
 const outletSessions = new Map();
 const adminUsers = [];
 const adminSessions = new Map();
@@ -363,19 +283,19 @@ async function sendAdminCredentials(user, req, subjectPrefix = "Admin Login Cred
   user.mustChangePassword = true;
   user.status = user.status === "disabled" ? "disabled" : "active";
   const loginId = user.mobile || user.email || "";
+  const subjectBrand = String(paymentConfig.brandName || "").trim() || "PikQuik";
   let delivery = "preview";
   if (user.email) {
     delivery = await deliverAdminEmail({
       to: user.email || "",
-      subject: `Grab And Go ${subjectPrefix}`,
+      subject: `${subjectBrand} ${subjectPrefix}`,
       html: `<p>Your account is ready.</p><p>Login ID: <b>${loginId}</b></p><p>Temporary Password: <b>${tempPassword}</b></p><p>Please change password after first login.</p>`,
       previewUrl: `${getBaseUrl(req)}/admin`
     });
   }
   return {
     delivery,
-    loginId,
-    temporaryPassword: delivery === "preview" ? tempPassword : ""
+    loginId
   };
 }
 
@@ -859,13 +779,12 @@ function handleApi(req, res, parsedUrl) {
           user.status = user.status === "disabled" ? "disabled" : "active";
         }
 
-        const { delivery, loginId, temporaryPassword } = await sendAdminCredentials(user, req, "Signup Credentials");
+        const { delivery, loginId } = await sendAdminCredentials(user, req, "Signup Credentials");
 
         return sendJson(res, 201, {
           message: "Signup successful. Login credentials generated.",
           delivery,
           loginId,
-          temporaryPassword,
           admin: sanitizeAdminUser(user)
         });
       })
@@ -1007,12 +926,11 @@ function handleApi(req, res, parsedUrl) {
         if (!user) {
           return sendJson(res, 200, { message: "If this login is registered, credentials were sent." });
         }
-        const { delivery, loginId, temporaryPassword } = await sendAdminCredentials(user, req, "Reset Credentials");
+        const { delivery, loginId } = await sendAdminCredentials(user, req, "Reset Credentials");
         return sendJson(res, 200, {
           message: "If this login is registered, credentials were sent.",
           delivery,
-          loginId,
-          temporaryPassword
+          loginId
         });
       })
       .catch((err) => sendJson(res, 400, { error: err.message }));
@@ -1135,12 +1053,11 @@ function handleApi(req, res, parsedUrl) {
           if (user.status === "disabled") user.status = "active";
         }
 
-        const { delivery, loginId, temporaryPassword } = await sendAdminCredentials(user, req, "Admin Credentials");
+        const { delivery, loginId } = await sendAdminCredentials(user, req, "Admin Credentials");
         return sendJson(res, 201, {
           message: "Admin user saved and credentials sent.",
           delivery,
           loginId,
-          temporaryPassword,
           user: sanitizeAdminUser(user)
         });
       })
@@ -1153,12 +1070,11 @@ function handleApi(req, res, parsedUrl) {
     const user = adminUsers.find((entry) => entry.id === id);
     if (!user) return sendJson(res, 404, { error: "Admin user not found." });
     return sendAdminCredentials(user, req, "Admin Credentials")
-      .then(({ delivery, loginId, temporaryPassword }) =>
+      .then(({ delivery, loginId }) =>
         sendJson(res, 200, {
           message: "Credentials resent.",
           delivery,
           loginId,
-          temporaryPassword,
           user: sanitizeAdminUser(user)
         })
       )
@@ -1489,7 +1405,10 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 405, { error: "Method not allowed." });
   }
 
-  if (parsedUrl.pathname === "/" || parsedUrl.pathname === "/customer") {
+  if (parsedUrl.pathname === "/") {
+    return sendFile(res, path.join(PUBLIC_DIR, "landing.html"));
+  }
+  if (parsedUrl.pathname === "/customer" || parsedUrl.pathname === "/app") {
     return sendFile(res, path.join(PUBLIC_DIR, "customer.html"));
   }
   if (parsedUrl.pathname === "/outlet") {
